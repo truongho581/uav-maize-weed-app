@@ -1,0 +1,457 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1280</width>
+    <height>860</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Phân tích Sinh trưởng Cây trồng UAV</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="layoutRoot">
+    <property name="spacing">
+     <number>8</number>
+    </property>
+    <property name="leftMargin">
+     <number>8</number>
+    </property>
+    <property name="topMargin">
+     <number>8</number>
+    </property>
+    <property name="rightMargin">
+     <number>8</number>
+    </property>
+    <property name="bottomMargin">
+     <number>8</number>
+    </property>
+
+    <!-- ══════════════ PANEL TRÁI ══════════════ -->
+    <item>
+     <widget class="QWidget" name="panelLeft">
+      <property name="minimumWidth">
+       <number>270</number>
+      </property>
+      <property name="maximumWidth">
+       <number>270</number>
+      </property>
+      <layout class="QVBoxLayout" name="layoutLeft">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+
+       <!-- ── GroupBox: Đầu vào ── -->
+       <item>
+        <widget class="QGroupBox" name="grpInput">
+         <property name="title">
+          <string>Đầu vào</string>
+         </property>
+         <layout class="QVBoxLayout" name="layoutInput">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="btnChonThuMuc">
+            <property name="text">
+             <string>Chọn thư mục ảnh...</string>
+            </property>
+            <property name="toolTip">
+             <string>Chọn thư mục chứa ảnh UAV (.jpg/.png/.tif)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblThuMuc">
+            <property name="text">
+             <string>Chưa chọn thư mục</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnChonModel">
+            <property name="text">
+             <string>Đổi file model (.pt)...</string>
+            </property>
+            <property name="toolTip">
+             <string>Chọn file model YOLOv8-seg đã train</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblModel">
+            <property name="text">
+             <string>Model: best.pt</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+
+       <!-- ── Nút Bắt đầu quét AI ── -->
+       <item>
+        <widget class="QPushButton" name="btnBatDau">
+         <property name="text">
+          <string>Bắt đầu quét AI</string>
+         </property>
+         <property name="minimumHeight">
+          <number>44</number>
+         </property>
+         <property name="toolTip">
+          <string>Chạy mô hình AI phân tích toàn bộ ảnh trong thư mục</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- ── Progress ── -->
+       <item>
+        <widget class="QProgressBar" name="progressBar">
+         <property name="value">
+          <number>0</number>
+         </property>
+         <property name="textVisible">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblTrangThai">
+         <property name="text">
+          <string>Sẵn sàng</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+
+       <!-- ── GroupBox: Hiển thị ── -->
+       <item>
+        <widget class="QGroupBox" name="grpHienThi">
+         <property name="title">
+          <string>Chế độ hiển thị</string>
+         </property>
+         <layout class="QVBoxLayout" name="layoutHienThi">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+
+          <item>
+           <widget class="QRadioButton" name="rbAnhGoc">
+            <property name="text">
+             <string>Ảnh gốc</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rbOverlay">
+            <property name="text">
+             <string>Overlay tổng hợp</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+
+          <item>
+           <widget class="QCheckBox" name="chkChiXemCay">
+            <property name="text">
+             <string>Chỉ xem Cây</string>
+            </property>
+            <property name="toolTip">
+             <string>Bật/tắt lớp mask cây ngô</string>
+            </property>
+           </widget>
+          </item>
+
+          <item>
+           <widget class="QCheckBox" name="chkChiXemCo">
+            <property name="text">
+             <string>Chỉ xem Cỏ</string>
+            </property>
+            <property name="toolTip">
+             <string>Bật/tắt lớp mask cỏ dại</string>
+            </property>
+           </widget>
+          </item>
+
+          <item>
+           <widget class="QLabel" name="lblDoDam">
+            <property name="text">
+             <string>Độ đậm mask: 50%</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="sliderAlpha">
+            <property name="minimum">
+             <number>10</number>
+            </property>
+            <property name="maximum">
+             <number>90</number>
+            </property>
+            <property name="value">
+             <number>50</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="tickPosition">
+             <enum>QSlider::TicksBelow</enum>
+            </property>
+            <property name="tickInterval">
+             <number>10</number>
+            </property>
+            <property name="toolTip">
+             <string>Điều chỉnh độ trong suốt của lớp màu AI</string>
+            </property>
+           </widget>
+          </item>
+
+         </layout>
+        </widget>
+       </item>
+
+       <!-- ── GroupBox: Điều hướng ảnh ── -->
+       <item>
+        <widget class="QGroupBox" name="grpDieuHuong">
+         <property name="title">
+          <string>Điều hướng ảnh</string>
+         </property>
+         <layout class="QHBoxLayout" name="layoutDieuHuong">
+          <item>
+           <widget class="QPushButton" name="btnTruoc">
+            <property name="text">
+             <string>Trước</string>
+            </property>
+            <property name="toolTip">
+             <string>Ảnh trước</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblSoAnh">
+            <property name="text">
+             <string>—</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnSau">
+            <property name="text">
+             <string>Sau</string>
+            </property>
+            <property name="toolTip">
+             <string>Ảnh tiếp theo</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+
+       <!-- ── Xuất kết quả ── -->
+       <item>
+        <widget class="QPushButton" name="btnXuatCSV">
+         <property name="text">
+          <string>Xuất CSV kết quả</string>
+         </property>
+         <property name="toolTip">
+          <string>Lưu toàn bộ chỉ số phân tích ra file CSV</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnLuuAnh">
+         <property name="text">
+          <string>Lưu ảnh overlay</string>
+         </property>
+         <property name="toolTip">
+          <string>Lưu ảnh kết quả AI hiện tại ra file PNG</string>
+         </property>
+        </widget>
+       </item>
+
+       <!-- Spacer dưới cùng -->
+       <item>
+        <spacer name="spacerLeft">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+
+      </layout>
+     </widget>
+    </item>
+
+    <!-- ══════════════ PANEL PHẢI ══════════════ -->
+    <item>
+     <widget class="QWidget" name="panelRight">
+      <layout class="QVBoxLayout" name="layoutRight">
+       <property name="spacing">
+        <number>8</number>
+       </property>
+
+       <!-- ── Splitter: Ảnh / Bảng ── -->
+       <item>
+        <widget class="QSplitter" name="splitterRight">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+
+         <!-- Khu vực hiển thị ảnh -->
+         <widget class="QLabel" name="lblAnh">
+          <property name="text">
+           <string>Chưa có ảnh — Chọn thư mục và nhấn Bắt đầu quét AI</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="minimumHeight">
+           <number>420</number>
+          </property>
+          <property name="scaledContents">
+           <bool>false</bool>
+          </property>
+         </widget>
+
+         <!-- GroupBox: Bảng chỉ số -->
+         <widget class="QGroupBox" name="grpBang">
+          <property name="title">
+           <string>Chỉ số Cây trồng (Crop)</string>
+          </property>
+          <layout class="QVBoxLayout" name="layoutBang">
+           <item>
+            <widget class="QTableWidget" name="bangChiSo">
+             <property name="minimumHeight">
+              <number>180</number>
+             </property>
+             <property name="maximumHeight">
+              <number>240</number>
+             </property>
+             <property name="editTriggers">
+              <set>QAbstractItemView::NoEditTriggers</set>
+             </property>
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="alternatingRowColors">
+              <bool>true</bool>
+             </property>
+             <property name="columnCount">
+              <number>2</number>
+             </property>
+             <column>
+              <property name="text">
+               <string>Chỉ số</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>Giá trị</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+
+        </widget>
+       </item>
+
+      </layout>
+     </widget>
+    </item>
+
+   </layout>
+  </widget>
+
+  <!-- Menu bar -->
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1280</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionChonThuMuc"/>
+    <addaction name="actionXuatCSV"/>
+    <addaction name="separator"/>
+    <addaction name="actionThoat"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Trợ giúp</string>
+    </property>
+    <addaction name="actionVeChungToi"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuHelp"/>
+  </widget>
+
+  <!-- Status bar -->
+  <widget class="QStatusBar" name="statusbar"/>
+
+  <!-- Actions -->
+  <action name="actionChonThuMuc">
+   <property name="text">
+    <string>Chọn thư mục ảnh...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="actionXuatCSV">
+   <property name="text">
+    <string>Xuất CSV kết quả</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionThoat">
+   <property name="text">
+    <string>Thoát</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="actionVeChungToi">
+   <property name="text">
+    <string>Về chúng tôi</string>
+   </property>
+  </action>
+
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

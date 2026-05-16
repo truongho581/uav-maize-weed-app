@@ -1,0 +1,229 @@
+TÀI LIỆU PHÂN TÍCH CHI TIẾT PHẦN MỀM UAV CROP ANALYSIS
+=======================================================
+
+1. Mục đích phần mềm
+--------------------
+UAV Crop Analysis là phần mềm phân tích ảnh cây trồng thu từ UAV. Phần mềm dùng mô hình AI segmentation để phân vùng cây ngô và cỏ dại trên ảnh RGB, sau đó tính các chỉ số về sinh trưởng cây trồng và mức độ xâm nhiễm cỏ dại.
+
+Mục tiêu chính:
+- Đọc ảnh UAV dạng JPG, JPEG, PNG, TIFF, BMP.
+- Cắt ảnh lớn thành các tile 640 x 640 để chạy AI ổn định hơn.
+- Phân vùng 3 giai đoạn cây ngô và vùng cỏ dại.
+- Ghép mask tile về đúng kích thước ảnh gốc.
+- Hiển thị ảnh gốc, mask cây, mask cỏ, overlay, heatmap cỏ và vùng cảnh báo.
+- Xuất bảng chỉ số ra file CSV.
+
+2. Đối tượng AI nhận diện
+-------------------------
+Mô hình hiện tại gồm 4 class:
+
+- maize_2: cây ngô giai đoạn 2 lá.
+- maize_4: cây ngô giai đoạn 4 lá.
+- maize_6: cây ngô giai đoạn 6 lá.
+- weed: vùng cỏ dại.
+
+Lưu ý quan trọng:
+- Cây ngô được xử lý theo instance. Vì vậy phần mềm có thể đếm tổng cây ngô và đếm từng giai đoạn 2 lá, 4 lá, 6 lá dựa trên số mask cây mà model trả về.
+- Cỏ dại không được xem là instance cần đếm. Cỏ dại được xử lý như mask vùng/phân bố mật độ. Vì vậy phần mềm không hiển thị và không xuất chỉ số "số instance cỏ dại". Các chỉ số cỏ dại dùng trong phần mềm là độ phủ, diện tích, tỉ lệ cỏ/cây, số vùng cỏ theo hậu xử lý contour, heatmap mật độ và vùng cảnh báo.
+
+3. Màu hiển thị class
+---------------------
+OpenCV dùng hệ màu BGR trong code, nhưng khi hiển thị lên màn hình người dùng sẽ nhìn theo RGB.
+
+Màu class hiện tại:
+- maize_2: vàng, BGR (0, 255, 255).
+- maize_4: xanh lá, BGR (0, 255, 0).
+- maize_6: xanh dương, BGR (255, 120, 0).
+- weed: đỏ, BGR (0, 50, 220).
+
+Trong chế độ "Mask cây" và "Overlay", 3 class cây ngô được giữ màu riêng. Cỏ dại hiển thị màu đỏ.
+
+4. Luồng xử lý tổng quát
+------------------------
+Quy trình phân tích một ảnh:
+
+1. Người dùng chọn 1 ảnh hoặc chọn thư mục ảnh.
+2. Phần mềm kiểm tra file ảnh hợp lệ bằng OpenCV.
+3. Mỗi ảnh được cắt thành các tile 640 x 640 bằng TileEngine.
+4. Tile có overlap 64 pixel, stride thực tế là 576 pixel.
+5. Mỗi tile được đưa vào CropAICore để chạy YOLO segmentation.
+6. Kết quả trên tile gồm:
+   - crop_mask: mask tổng hợp của cây ngô.
+   - weed_mask: mask vùng cỏ dại.
+   - per_stage_masks: mask riêng cho maize_2, maize_4, maize_6.
+   - stage_counts: số instance cây ngô theo từng giai đoạn.
+7. TileEngine ghép crop_mask và weed_mask về ảnh gốc bằng cơ chế weight blending để giảm lỗi biên tile.
+8. Phần mềm ghép riêng per_stage_masks để giữ màu riêng cho 3 class ngô.
+9. CropProcessor tính chỉ số cây trồng.
+10. WeedProcessor tính chỉ số cỏ dại và tạo heatmap/vùng cảnh báo.
+11. UI cập nhật ảnh kết quả, bảng chỉ số và KPI.
+
+Nếu chọn nhiều ảnh trong thư mục, phần mềm sẽ phân tích từng ảnh. Sau đó nếu phát hiện các ảnh có overlap và có thể tìm homography bằng ORB feature matching, phần mềm thử ghép thành một kết quả lớn. Nếu không ghép được, phần mềm giữ các kết quả riêng.
+
+5. Xử lý ảnh lớn bằng tile
+--------------------------
+Ảnh UAV thường có kích thước lớn hơn kích thước input mong muốn của model. Phần mềm không đưa ảnh lớn vào model trực tiếp, mà cắt thành tile.
+
+Thông số hiện tại:
+- tile_size = 640 pixel.
+- overlap = 64 pixel.
+- stride = 640 - 64 = 576 pixel.
+
+Ví dụ ảnh 4000 x 3000:
+- Theo chiều rộng 4000 px: 7 cột tile.
+- Theo chiều cao 3000 px: 6 hàng tile.
+- Tổng cộng khoảng 42 tile.
+
+Tile ở biên ảnh nếu nhỏ hơn 640 x 640 sẽ được padding bằng nền đen. Khi ghép lại, phần padding không được lấy vào kích thước ảnh gốc.
+
+6. Chỉ số Crop
+--------------
+Bảng Crop hiển thị các chỉ số thuộc cây ngô:
+
+- Tổng cây ngô: tổng số instance cây ngô mà AI nhận diện được.
+- Ngô 2 lá: số instance class maize_2.
+- Ngô 4 lá: số instance class maize_4.
+- Ngô 6 lá: số instance class maize_6.
+- Phủ tán cây (%): tỉ lệ pixel cây trên tổng pixel ảnh.
+- Số cây ước tính: số cây tính bằng hậu xử lý contour trên crop_mask.
+- Diện tích tán (m2): diện tích vùng cây theo GSD.
+- Mật độ (cây/m2): số cây ước tính chia cho diện tích tán.
+- Cây kém phát triển: số contour cây có diện tích nhỏ hơn ngưỡng so với trung bình.
+
+GSD ảnh hưởng trực tiếp đến các chỉ số diện tích và mật độ. Nếu GSD sai, các chỉ số m2 và cây/m2 sẽ sai theo.
+
+7. Chỉ số Weed
+--------------
+Bảng Weed hiển thị các chỉ số thuộc cỏ dại:
+
+- Phủ tán cỏ (%): tỉ lệ pixel cỏ trên tổng pixel ảnh.
+- Số vùng cỏ: số vùng cỏ tách rời sau hậu xử lý contour. Đây là vùng phân bố, không phải instance AI.
+- Tỉ lệ cỏ/cây: số pixel cỏ chia cho số pixel cây.
+- Mức độ cạnh tranh: phân loại thấp, trung bình, cao, rất cao dựa trên tỉ lệ cỏ/cây.
+- Diện tích cỏ (m2): diện tích vùng cỏ theo GSD.
+- Cây bị bao vây: số cây có vùng xung quanh bị cỏ bao phủ theo phép dilation.
+- Vùng cảnh báo: số ô lưới có mật độ cỏ vượt ngưỡng cảnh báo.
+
+Không có chỉ số "số cỏ dại instance" vì cỏ dại là thảm thực phủ/phân bố theo vùng, không phải đối tượng riêng lẻ có hình dạng ổn định để đếm như cây ngô.
+
+8. Cấu hình phân tích
+---------------------
+Trên giao diện có nhóm "Cấu hình phân tích":
+
+- GSD: Ground Sample Distance, đơn vị cm/px. Dùng để quy đổi pixel sang m2.
+- Conf: ngưỡng tin cậy của AI. Tăng conf giúp giảm nhận nhầm, nhưng có thể bỏ sót đối tượng.
+- IoU: ngưỡng xử lý các mask/box chồng lấn trong YOLO.
+- Ngưỡng cỏ: ngưỡng mật độ cỏ trong mỗi ô lưới để đánh dấu vùng cảnh báo.
+- Lưới: số ô chia theo mỗi chiều để tạo heatmap/vùng cảnh báo. Ví dụ 4 nghĩa là 4 x 4 ô.
+
+9. Các chế độ hiển thị
+----------------------
+UI hiện có các chế độ xem:
+
+- Ảnh gốc: ảnh UAV ban đầu.
+- Mask cây: hiển thị mask cây ngô, giữ màu riêng cho maize_2, maize_4, maize_6.
+- Mask cỏ: hiển thị mask cỏ dại màu đỏ.
+- Overlay: phủ mask cây/cỏ lên ảnh gốc. Độ đậm overlay thay đổi bằng slider.
+- Heatmap cỏ: hiển thị bản đồ mật độ cỏ theo lưới. Chỉ các vùng có mật độ cỏ mới được phủ màu, tránh làm tối toàn bộ ảnh.
+- Vùng cảnh báo: vẽ các ô có mật độ cỏ vượt ngưỡng cảnh báo.
+
+10. Xuất kết quả
+----------------
+Phần mềm hiện tại xuất CSV, chưa xuất PDF/Excel trực tiếp.
+
+CSV gồm các nhóm thông tin:
+- File và loại kết quả.
+- GSD.
+- N_Crop, N_Maize2, N_Maize4, N_Maize6.
+- Độ phủ cây, số cây ước tính, diện tích tán, mật độ, cây kém phát triển.
+- Độ phủ cỏ, số vùng cỏ, tỉ lệ cỏ/cây, mức độ cạnh tranh, diện tích cỏ, cây bị bao vây, số vùng cảnh báo.
+
+CSV không có cột N_Weed vì cỏ dại không được đếm theo instance.
+
+11. Kiến trúc file chính
+------------------------
+main.py
+- Tạo QApplication.
+- Đặt tên app, style Fusion, font Segoe UI.
+- Khởi tạo và hiển thị MainWindow.
+
+phan_tich_ui.py
+- Chứa MainWindow và AnalysisWorker.
+- Quản lý UI, chọn ảnh/thư mục, chọn model, bắt đầu phân tích, cập nhật progress.
+- Gọi AI, TileEngine, CropProcessor, WeedProcessor.
+- Hiển thị ảnh, bảng chỉ số, KPI, xuất CSV và lưu ảnh kết quả.
+
+ai_core.py
+- Load model YOLO segmentation.
+- Chạy predict cho từng tile.
+- Tạo crop_mask, weed_mask, per_stage_masks.
+- Đếm instance cây ngô theo 3 giai đoạn.
+- Không đếm weed instance.
+- Định nghĩa màu class.
+
+tile_engine.py
+- Cắt ảnh thành tile 640 x 640 với overlap 64.
+- Lưu tọa độ tile để ghép lại.
+- Stitch crop_mask và weed_mask về kích thước ảnh gốc.
+
+crop_processor.py
+- Tính chỉ số cây trồng từ crop_mask.
+- Tính độ phủ tán cây, số cây ước tính, diện tích tán, mật độ, cây kém phát triển.
+
+weed_processor.py
+- Tính chỉ số cỏ dại từ weed_mask và crop_mask.
+- Tính độ phủ cỏ, diện tích cỏ, tỉ lệ cỏ/cây, mức độ cạnh tranh.
+- Tạo heatmap và vùng cảnh báo theo lưới.
+
+uav_analysis.spec
+- Cấu hình PyInstaller để build ứng dụng.
+- Đóng gói file UI và thư mục models.
+
+12. Cách chạy phần mềm
+----------------------
+Chạy từ source:
+
+1. Cài Python và các thư viện trong requirements.txt.
+2. Đảm bảo có model ở models/best.pt hoặc chọn model khác trên UI.
+3. Chạy lệnh:
+   python main.py
+
+Nếu dùng môi trường ảo trong project:
+   .venv/bin/python main.py
+
+Build ứng dụng:
+   python build_exe.py
+
+Hoặc:
+   pyinstaller uav_analysis.spec --noconfirm
+
+13. Cách sử dụng trên UI
+------------------------
+1. Mở phần mềm.
+2. Kiểm tra trạng thái model. Nếu báo thiếu model, chọn file .pt khác hoặc đặt best.pt vào thư mục models.
+3. Chọn "Chọn 1 ảnh..." hoặc "Chọn thư mục ảnh...".
+4. Chỉnh GSD, Conf, IoU, ngưỡng cỏ và lưới nếu cần.
+5. Bấm "Bắt đầu quét AI".
+6. Đợi progress hoàn thành.
+7. Đổi chế độ xem giữa Ảnh gốc, Mask cây, Mask cỏ, Overlay, Heatmap cỏ, Vùng cảnh báo.
+8. Xem chỉ số Crop/Weed ở bảng bên dưới.
+9. Dùng "Xuất CSV kết quả" để lưu bảng chỉ số.
+10. Dùng "Lưu ảnh overlay" để lưu ảnh kết quả đang xem.
+
+14. Giới hạn và lưu ý
+---------------------
+- Chất lượng kết quả phụ thuộc vào model best.pt và độ phù hợp của dữ liệu train.
+- Ảnh quá mờ, quá tối, góc chụp quá khác hoặc có bóng đổ mạnh có thể làm AI nhận sai.
+- GSD cần đúng với độ cao bay/camera nếu muốn diện tích m2 chính xác.
+- Đếm cây ngô theo instance AI có thể sai nếu cây dính nhau, bị che khuất hoặc mask bị tách/nhập không đúng.
+- Cỏ dại không nên đếm theo instance. Nên đánh giá bằng độ phủ, diện tích, mật độ và vùng cảnh báo.
+- Chức năng ghép ảnh overlap phụ thuộc vào feature matching. Ảnh ít điểm đặc trưng, quá lặp lại, quá mờ hoặc overlap thấp có thể không ghép được.
+
+15. Hướng phát triển tiếp
+-------------------------
+- Thêm xuất Excel/PDF nếu cần báo cáo hoàn chỉnh.
+- Thêm tùy chọn nhập độ cao bay để tự tính GSD theo camera.
+- Lưu log phân tích ra file.
+- Thêm bảng giải thích màu class trên UI.
+- Thêm chế độ xem riêng từng class maize_2, maize_4, maize_6.
+- Thêm cache tile/result để tránh chạy lại AI khi chỉ đổi chế độ hiển thị.
