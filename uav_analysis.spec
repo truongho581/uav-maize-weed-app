@@ -4,38 +4,57 @@
 
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
 
 BASE = Path(SPECPATH)
 
-# ── Dữ liệu đi kèm (file .ui, thư mục models, …) ──
+# Du lieu di kem. Checkpoint trien khai duoc cap rieng khi build.
 datas = [
-    # File Qt Designer UI
-    (str(BASE / "phan_tich_ui.ui"),  "."),
-    # Thư mục models (best.pt và bất kỳ file .pt nào trong đó)
     (str(BASE / "models"),           "models"),
 ]
 
-# ── Các module ẩn mà PyInstaller hay bỏ sót ──
+# Cac module an ma PyInstaller co the bo sot.
 hidden_imports = [
-    "PyQt5.uic",
-    "PyQt5.QtXml",
-    "cv2",
-    "numpy",
-    "ultralytics",
-    "ultralytics.nn.tasks",
-    "ultralytics.models.yolo.segment",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "uav_crop_analysis.adapters.sqlite",
+    "uav_crop_analysis.adapters.job_sqlite",
+    "uav_crop_analysis.adapters.image_metadata",
+    "uav_crop_analysis.adapters.manifest",
+    "uav_crop_analysis.adapters.model_catalog",
+    "uav_crop_analysis.adapters.telemetry_csv",
+    "uav_crop_analysis.adapters.spatial_sqlite",
+    "uav_crop_analysis.adapters.preview_mosaic",
+    "uav_crop_analysis.adapters.rasterio_geospatial",
+    "uav_crop_analysis.adapters.nodeodm",
+    "uav_crop_analysis.adapters.report_export",
+    "uav_crop_analysis.jobs.pipeline",
+    "uav_crop_analysis.jobs.service",
+    "uav_crop_analysis.jobs.worker",
 ]
+hidden_imports += collect_submodules("uav_crop_analysis.inference.torch_models")
 
 a = Analysis(
     ["main.py"],
-    pathex=[str(BASE)],
+    pathex=[str(BASE), str(BASE / "src")],
     binaries=[],
     datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["matplotlib", "tkinter", "IPython", "jupyter"],
+    # Instance runtimes remain excluded until a maize checkpoint is registered.
+    # NumPy, Pillow, PyTorch and Transformers are retained for Phase 6 semantic
+    # analysis and result rendering.
+    excludes=[
+        "cv2",
+        "ultralytics",
+        "matplotlib",
+        "tkinter",
+        "IPython",
+        "jupyter",
+    ],
     noarchive=False,
 )
 

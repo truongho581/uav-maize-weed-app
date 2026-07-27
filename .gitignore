@@ -3,3 +3,21 @@ __pycache__/
 venv/
 .venv/
 .DS_Store
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.cache/
+build/
+dist/
+htmlcov/
+*.egg-info/
+*.log
+models/*.pt
+models/*.pth
+models/*.ckpt
+models/*.onnx
+
+# Source acceptance records may contain personal or financial attachments.
+Báo cáo nghiệm thu CN2025/
+*nghi*m thu CN2025/

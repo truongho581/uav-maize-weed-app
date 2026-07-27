@@ -1,0 +1,133 @@
+TÀI LIỆU PHÂN TÍCH PHẦN MỀM UAV CROP ANALYSIS
+================================================
+
+Trạng thái cập nhật: Phase 9, ngày 2026-07-27.
+
+1. Mục đích
+-----------
+Phần mềm quản lý một nhiệm vụ khảo sát nông nghiệp bằng đúng ba drone bay trên ba làn
+song song, gimbal -90 độ và đứng yên chụp từng ảnh. Ảnh được nhập cùng EXIF/telemetry,
+phân tích AI và, khi đủ georeference, tạo sản phẩm orthomosaic/heatmap có vị trí.
+
+Không yêu cầu điều khiển ba drone theo thời gian thực trong phiên bản hiện tại. Package
+có SDK/CLI/REST để phần mềm điều khiển đọc mission, job và result; adapter drone là read-only.
+
+2. Hợp đồng AI
+--------------
+- Weed chỉ dùng semantic segmentation. Đầu ra là probability/mask, độ phủ, diện tích và
+  heatmap; không có chỉ số số instance weed.
+- Maize chỉ dùng instance segmentation với class maize_2, maize_4 và maize_6. Contract
+  YOLOv8/Mask R-CNN đã tách riêng nhưng chưa bật worker vì checkpoint instance sẽ được
+  cung cấp sau.
+- Model registry hiện quản lý Attention U-Net, DeepLabV3+ và SegFormer semantic, kèm
+  preprocessing, artifact role, version và checksum.
+
+Ảnh lớn được chia tile có overlap, inference trong worker process, blend probability về
+đúng kích thước ảnh và xuất artifact atomically. Job có queued/running/cancel/retry/error/
+completed và provenance.
+
+3. Dữ liệu ba drone
+-------------------
+Mission lưu trong SQLite gồm flight profile, ba lane assignment, camera profile, image
+asset và telemetry sample. Import kiểm tra checksum, ảnh trùng, sequence, GPS, độ cao và
+độ lệch timestamp.
+
+Thứ tự ảnh không suy ra từ thư mục ngẫu nhiên. Mỗi ảnh phải gắn drone_id, lane và
+sequence_index; GPS/độ cao lấy từ EXIF hoặc ghép flight log theo thời gian.
+
+4. Sản phẩm không gian
+----------------------
+- Preview mosaic: contact sheet ba làn theo sequence, luôn ghi NOT GEOREFERENCED.
+- Orthomosaic: GeoTIFF có CRS và affine transform, nhập từ nguồn ngoài hoặc tạo bởi
+  NodeODM qua PyODM.
+- Weed heatmap: chạy semantic trực tiếp trên orthomosaic, giữ nguyên CRS/transform/grid.
+
+Heatmap xuất weed probability GeoTIFF, weed mask GeoTIFF, valid-data mask GeoTIFF, vùng
+rủi ro GeoJSON EPSG:4326 và PNG có thang xác suất. Mọi sản phẩm dẫn xuất lưu liên kết tới
+orthomosaic, job AI, model, threshold và manifest checksum.
+
+Preview không được gọi là bản đồ địa lý. Raster thiếu CRS/transform hoặc prediction sai
+kích thước orthomosaic bị từ chối.
+
+5. Kiến trúc hiện tại
+---------------------
+main.py
+  Bootstrap mỏng cho source và PyInstaller.
+
+src/uav_crop_analysis/domain
+  Value object và invariant của mission ba drone.
+
+src/uav_crop_analysis/application
+  Use case import, workspace, analysis và metric không phụ thuộc Qt/framework AI.
+
+src/uav_crop_analysis/inference
+  Contract/model registry và adapter semantic/instance.
+
+src/uav_crop_analysis/jobs
+  Pipeline tile, worker process, state machine và artifact contract.
+
+src/uav_crop_analysis/geospatial
+  Spatial product, raster metadata, ports và workflow orthomosaic/heatmap.
+
+src/uav_crop_analysis/adapters
+  SQLite, EXIF/CSV, model catalog, Rasterio, NodeODM và preview implementation.
+
+src/uav_crop_analysis/ui
+  PySide6 shell, viewmodel, Qt table model, controller chạy nền và các workspace.
+
+src/uav_crop_analysis/sdk, api, integrations
+  SDK/DTO, REST v1, QGroundControl và MAVSDK read-only không phụ thuộc Qt.
+
+Các file ai_core.py, crop_processor.py, weed_processor.py, tile_engine.py, phan_tich_ui.py
+và build_exe.py cũ đã bị xóa ở Phase 6.5. Không còn PyQt5/legacy compatibility layer.
+
+6. Giao diện
+------------
+- Nhiệm vụ: danh sách và overview của ba drone.
+- Dữ liệu: ảnh/metadata/lỗi theo từng drone.
+- Phân tích: chọn model/checkpoint, theo dõi job và xem original/mask/probability/overlay.
+- Không gian: tạo preview, nhập/chạy NodeODM, xem CRS/bounds/resolution/provenance, chạy
+  semantic trên orthomosaic và xuất heatmap.
+- Báo cáo: dashboard toàn mission/ba drone, chi tiết ảnh và job; xuất JSON schema 1,
+  CSV UTF-8, HTML tự chứa và checksum manifest.
+
+7. Chạy và đóng gói
+-------------------
+Chạy source:
+
+  python -m pip install -e .
+  uav-crop-analysis
+
+NodeODM tùy chọn:
+
+  UAV_CROP_NODEODM_URL=http://localhost:3000 uav-crop-analysis
+
+CLI/API:
+
+  uav-crop capabilities
+  uav-crop serve --host 127.0.0.1 --port 8765
+
+Build:
+
+  python -m build
+  pyinstaller --noconfirm uav_analysis.spec
+
+Dependency chính và phiên bản nằm trong pyproject.toml; requirements-dev.lock là lock
+đầy đủ cho phát triển. uav_analysis.spec là build contract duy nhất.
+
+8. Giới hạn còn lại
+-------------------
+- Maize instance/density/stage chờ checkpoint tương thích.
+- Control point, seam và độ chính xác hình học phải review lại trên mission ba drone thật
+  cùng output NodeODM; valid-data mask không phải geometric confidence.
+- MAVSDK đã có adapter read-only nhưng chưa kiểm thử với ba drone/SITL thật; không có lệnh bay.
+- Local REST chưa có authentication/TLS và chỉ bind loopback mặc định.
+- Build hiện đã smoke-test trên macOS; Windows/Linux cần build và test native trước release.
+
+Tài liệu chi tiết:
+- docs/requirements/YEU_CAU_PHAN_MEM.md
+- docs/roadmap/KE_HOACH_TAI_CAU_TRUC.md
+- docs/phase7/GEOSPATIAL_CONTRACT.md
+- docs/phase7/PHASE7_REVIEW.md
+- docs/phase9/SDK_API_CONTRACT.md
+- docs/phase9/INTEGRATION_CONTRACT.md

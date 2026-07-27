@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "mission": {
+    "mission_id": "mission-2026-001",
+    "name": "Three-drone maize survey",
+    "created_at": "2026-07-27T08:00:00+07:00",
+    "flight_profile": {
+      "altitude_m": 10.0,
+      "gimbal_pitch_deg": -90.0,
+      "forward_overlap": 0.75,
+      "side_overlap": 0.65,
+      "capture_mode": "stop_and_capture"
+    }
+  },
+  "max_telemetry_skew_seconds": 2.0,
+  "drones": [
+    {
+      "drone_id": "drone-01",
+      "lane_index": 0,
+      "image_dir": "data/drone-01/images",
+      "telemetry_file": "data/drone-01/flight.csv",
+      "telemetry_mapping": {
+        "timestamp_column": "timestamp",
+        "latitude_column": "latitude",
+        "longitude_column": "longitude",
+        "relative_altitude_column": "relative_altitude_m",
+        "timestamp_format": "iso8601"
+      },
+      "camera_profile": {
+        "profile_id": "generic-rgb",
+        "name": "Generic RGB camera",
+        "make": null,
+        "model": null,
+        "image_width_px": null,
+        "image_height_px": null,
+        "focal_length_mm": null,
+        "horizontal_fov_deg": null,
+        "vertical_fov_deg": null,
+        "distortion_coefficients": []
+      }
+    },
+    {
+      "drone_id": "drone-02",
+      "lane_index": 1,
+      "image_dir": "data/drone-02/images",
+      "telemetry_file": "data/drone-02/flight.csv",
+      "telemetry_mapping": {
+        "timestamp_column": "timestamp",
+        "latitude_column": "latitude",
+        "longitude_column": "longitude",
+        "relative_altitude_column": "relative_altitude_m",
+        "timestamp_format": "iso8601"
+      },
+      "camera_profile": {
+        "profile_id": "generic-rgb",
+        "name": "Generic RGB camera",
+        "make": null,
+        "model": null,
+        "image_width_px": null,
+        "image_height_px": null,
+        "focal_length_mm": null,
+        "horizontal_fov_deg": null,
+        "vertical_fov_deg": null,
+        "distortion_coefficients": []
+      }
+    },
+    {
+      "drone_id": "drone-03",
+      "lane_index": 2,
+      "image_dir": "data/drone-03/images",
+      "telemetry_file": "data/drone-03/flight.csv",
+      "telemetry_mapping": {
+        "timestamp_column": "timestamp",
+        "latitude_column": "latitude",
+        "longitude_column": "longitude",
+        "relative_altitude_column": "relative_altitude_m",
+        "timestamp_format": "iso8601"
+      },
+      "camera_profile": {
+        "profile_id": "generic-rgb",
+        "name": "Generic RGB camera",
+        "make": null,
+        "model": null,
+        "image_width_px": null,
+        "image_height_px": null,
+        "focal_length_mm": null,
+        "horizontal_fov_deg": null,
+        "vertical_fov_deg": null,
+        "distortion_coefficients": []
+      }
+    }
+  ]
+}

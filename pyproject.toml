@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uav-crop-analysis"
+version = "0.2.0"
+description = "Desktop and integration module for UAV maize and weed analysis"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy==2.4.5",
+    "opencv-python==4.13.0.92",
+    "pandas==3.0.3",
+    "Pillow==12.2.0",
+    "PySide6-Essentials==6.11.1",
+    "pyodm==1.5.13",
+    "rasterio==1.4.4",
+    "torch==2.12.0",
+    "torchvision==0.27.0",
+    "ultralytics==8.4.51",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy==1.20.2",
+    "pip-tools==7.6.0",
+    "pytest==8.4.2",
+    "pytest-cov==7.1.0",
+    "pytest-qt==4.5.0",
+    "ruff==0.16.0",
+]
+onnx = ["onnx>=1.17,<2", "onnxruntime>=1.19,<2"]
+semantic = ["transformers>=5.14,<6"]
+drone = ["mavsdk>=3,<5", "pymavlink>=2.4,<3"]
+
+[project.scripts]
+uav-crop-analysis = "uav_crop_analysis.ui.app:main"
+uav-crop = "uav_crop_analysis.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = ".", "uav_crop_analysis" = "src/uav_crop_analysis"}
+packages = [
+    "uav_crop_analysis",
+    "uav_crop_analysis.adapters",
+    "uav_crop_analysis.application",
+    "uav_crop_analysis.domain",
+    "uav_crop_analysis.infrastructure",
+    "uav_crop_analysis.inference",
+    "uav_crop_analysis.inference.torch_models",
+    "uav_crop_analysis.inference.torch_models.attention_unet",
+    "uav_crop_analysis.inference.torch_models.deeplabv3plus",
+    "uav_crop_analysis.inference.torch_models.deeplabv3plus.backbones",
+    "uav_crop_analysis.jobs",
+    "uav_crop_analysis.geospatial",
+    "uav_crop_analysis.integrations",
+    "uav_crop_analysis.reporting",
+    "uav_crop_analysis.sdk",
+    "uav_crop_analysis.api",
+    "uav_crop_analysis.ui",
+    "uav_crop_analysis.ui.views",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+qt_api = "pyside6"
+markers = [
+    "golden: regression tests that require external dataset assets and an AI checkpoint",
+    "external_golden: golden tests that read the external canonical dataset",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+files = [
+    "src",
+    "tools",
+    "tests",
+]
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["uav_crop_analysis.inference.torch_models.*"]
+ignore_errors = true

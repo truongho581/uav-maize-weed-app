@@ -1,0 +1,21 @@
+"""Persistence port for analysis jobs and their event history."""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from uav_crop_analysis.jobs.models import AnalysisJob, JobEvent, JobStatus
+
+
+class AnalysisJobRepository(Protocol):
+    def add(self, job: AnalysisJob, event: JobEvent) -> None: ...
+
+    def get(self, job_id: str) -> AnalysisJob | None: ...
+
+    def save(self, job: AnalysisJob, event: JobEvent) -> None: ...
+
+    def list_by_status(self, statuses: tuple[JobStatus, ...]) -> tuple[AnalysisJob, ...]: ...
+
+    def list_for_mission(self, mission_id: str) -> tuple[AnalysisJob, ...]: ...
+
+    def list_events(self, job_id: str) -> tuple[JobEvent, ...]: ...

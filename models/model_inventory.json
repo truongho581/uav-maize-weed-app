@@ -1,0 +1,194 @@
+{
+  "schema_version": 2,
+  "artifact_root": "..",
+  "dataset": {
+    "id": "maizemask-v7.2",
+    "source_camera": "DJI Mini 4K FC7703 RGB",
+    "annotation_contract": {
+      "maize": "instance segmentation with maize2/maize4/maize6 stages",
+      "maize_u": "semantic maize and instance ignore region",
+      "weed": "semantic segmentation"
+    }
+  },
+  "models": [
+    {
+      "id": "attention-unet-v72-loso",
+      "version": "7.2-loso",
+      "family": "attention_unet",
+      "task": "semantic_segmentation",
+      "status": "evaluation_only_loso",
+      "class_names": ["background", "crop", "weed"],
+      "target_classes": ["weed"],
+      "input_size": [640, 640],
+      "dataset_version": "maizemask-v7.2",
+      "runtime": {
+        "kind": "pytorch",
+        "output_adapter": "semantic_logits"
+      },
+      "preprocessing": {
+        "color_space": "rgb",
+        "resize_mode": "stretch",
+        "interpolation": "bilinear",
+        "value_scale": 0.00392156862745098,
+        "mean": [0.0, 0.0, 0.0],
+        "std": [1.0, 1.0, 1.0]
+      },
+      "artifacts": [
+        {
+          "role": "best_test_D1_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/attention_unet/v7.2/loso/test_D1/seed_42/best.pth",
+          "sha256": "2356c958475fd94ef3b07b1ed41a2c3cc3bb7c27f70d36be55933753b00f3bbb",
+          "format": "pytorch"
+        },
+        {
+          "role": "best_test_D2_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/attention_unet/v7.2/loso/test_D2/seed_42/best.pth",
+          "sha256": "449ad1440e7df4708dc93b57628db949a5172a8cf181b1a78ad2580f9f0e964e",
+          "format": "pytorch"
+        },
+        {
+          "role": "best_test_D3_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/attention_unet/v7.2/loso/test_D3/seed_42/best.pth",
+          "sha256": "fc1875f4887a93dbc84c80a999740a6d1cef3865826d9e4aaedabe0c8c2bd819",
+          "format": "pytorch"
+        }
+      ]
+    },
+    {
+      "id": "deeplabv3plus-r50-v72-loso",
+      "version": "7.2-loso",
+      "family": "deeplabv3plus_resnet50",
+      "task": "semantic_segmentation",
+      "status": "evaluation_only_loso",
+      "class_names": ["background", "crop", "weed"],
+      "target_classes": ["weed"],
+      "input_size": [640, 640],
+      "dataset_version": "maizemask-v7.2",
+      "runtime": {
+        "kind": "pytorch",
+        "output_adapter": "semantic_logits"
+      },
+      "preprocessing": {
+        "color_space": "rgb",
+        "resize_mode": "stretch",
+        "interpolation": "bilinear",
+        "value_scale": 0.00392156862745098,
+        "mean": [0.0, 0.0, 0.0],
+        "std": [1.0, 1.0, 1.0]
+      },
+      "artifacts": [
+        {
+          "role": "best_test_D1_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/deeplabv3plus_resnet50/v7.2/loso/test_D1/seed_42/best.pth",
+          "sha256": "ed61ca304ed488c706f4c73dcdd02675059a992442fe1ad0d178e43464b34591",
+          "format": "pytorch"
+        },
+        {
+          "role": "best_test_D2_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/deeplabv3plus_resnet50/v7.2/loso/test_D2/seed_42/best.pth",
+          "sha256": "96f9674f3b4bd469047c478708d81a71d4753f89581d411cd8100d7d525a93d4",
+          "format": "pytorch"
+        },
+        {
+          "role": "best_test_D3_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/deeplabv3plus_resnet50/v7.2/loso/test_D3/seed_42/best.pth",
+          "sha256": "655887742bc98d4f5833b828b7c431eb9d98f84cb8807c37c73b67eae724a33c",
+          "format": "pytorch"
+        }
+      ]
+    },
+    {
+      "id": "segformer-b0-v72-loso",
+      "version": "7.2-loso",
+      "family": "segformer_b0",
+      "task": "semantic_segmentation",
+      "status": "evaluation_only_loso_winner",
+      "class_names": ["background", "crop", "weed"],
+      "target_classes": ["weed"],
+      "input_size": [640, 640],
+      "dataset_version": "maizemask-v7.2",
+      "runtime": {
+        "kind": "pytorch",
+        "output_adapter": "semantic_logits"
+      },
+      "preprocessing": {
+        "color_space": "rgb",
+        "resize_mode": "stretch",
+        "interpolation": "bilinear",
+        "value_scale": 0.00392156862745098,
+        "mean": [0.0, 0.0, 0.0],
+        "std": [1.0, 1.0, 1.0]
+      },
+      "artifacts": [
+        {
+          "role": "best_test_D1_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/segformer_b0/v7.2/loso/test_D1/seed_42/best.pth",
+          "sha256": "008eec5b8fdc23ac485c544ba8b0c146f7f796ff5a7c553e9601e21ea44c5e07",
+          "format": "pytorch"
+        },
+        {
+          "role": "best_test_D2_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/segformer_b0/v7.2/loso/test_D2/seed_42/best.pth",
+          "sha256": "9529ffc203a47778b693b86df131e00d9ba01c7a05580cd9c21bfa031956f4ef",
+          "format": "pytorch"
+        },
+        {
+          "role": "best_test_D3_seed_42",
+          "path": "../agriculture_drone_prj/experiments/results/semantic_v72/controlled_scratch/semantic/segformer_b0/v7.2/loso/test_D3/seed_42/best.pth",
+          "sha256": "293035c2f540831786b689c0eafce83efb0218488e9fb174e83c680c04fb1752",
+          "format": "pytorch"
+        }
+      ]
+    },
+    {
+      "id": "yolov8-seg-v72-instance",
+      "version": "7.2-pending",
+      "family": "yolov8",
+      "task": "maize_instance_segmentation",
+      "status": "awaiting_checkpoint_path",
+      "class_names": ["maize2", "maize4", "maize6"],
+      "target_classes": ["maize2", "maize4", "maize6"],
+      "input_size": [640, 640],
+      "dataset_version": "maizemask-v7.2",
+      "runtime": {
+        "kind": "ultralytics",
+        "output_adapter": "ultralytics_masks"
+      },
+      "preprocessing": {
+        "color_space": "rgb",
+        "resize_mode": "stretch",
+        "interpolation": "bilinear",
+        "value_scale": 0.00392156862745098,
+        "mean": [0.0, 0.0, 0.0],
+        "std": [1.0, 1.0, 1.0]
+      },
+      "preprocessing_contract_status": "provisional_until_checkpoint_arrives",
+      "artifacts": []
+    },
+    {
+      "id": "mask-rcnn-r50-fpn-v72-instance",
+      "version": "7.2-pending",
+      "family": "mask_rcnn_r50_fpn",
+      "task": "maize_instance_segmentation",
+      "status": "awaiting_checkpoint_path",
+      "class_names": ["maize2", "maize4", "maize6"],
+      "target_classes": ["maize2", "maize4", "maize6"],
+      "input_size": [640, 640],
+      "dataset_version": "maizemask-v7.2",
+      "runtime": {
+        "kind": "torchvision",
+        "output_adapter": "torchvision_masks"
+      },
+      "preprocessing": {
+        "color_space": "rgb",
+        "resize_mode": "stretch",
+        "interpolation": "bilinear",
+        "value_scale": 0.00392156862745098,
+        "mean": [0.0, 0.0, 0.0],
+        "std": [1.0, 1.0, 1.0]
+      },
+      "preprocessing_contract_status": "provisional_until_checkpoint_arrives",
+      "artifacts": []
+    }
+  ]
+}

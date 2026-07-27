@@ -1,0 +1,134 @@
+from datetime import datetime, timezone
+from pathlib import Path
+
+from PIL import Image
+import pytest
+
+from uav_crop_analysis.adapters import (
+    CsvTelemetryReader,
+    PillowExifReader,
+    load_mission_manifest,
+    write_mission_manifest,
+)
+from uav_crop_analysis.application import (
+    DroneImportSource,
+    MissionImportRequest,
+    TelemetryCsvMapping,
+    TimestampFormat,
+)
+from uav_crop_analysis.domain import CameraProfile, DroneId, MissionId, SurveyMission
+from uav_crop_analysis.errors import ImportDataError
+
+
+def _write_exif_image(path: Path, captured_at: datetime, color: tuple[int, int, int]) -> None:
+    exif = Image.Exif()
+    exif[36867] = captured_at.strftime("%Y:%m:%d %H:%M:%S")
+    exif[36881] = "+00:00"
+    Image.new("RGB", (32, 24), color).save(path, exif=exif)
+
+
+def test_pillow_reader_extracts_dimensions_and_aware_capture_time(tmp_path: Path) -> None:
+    image_path = tmp_path / "capture.jpg"
+    captured_at = datetime(2026, 7, 27, 9, 30, 0, tzinfo=timezone.utc)
+    _write_exif_image(image_path, captured_at, (20, 100, 30))
+
+    probe = PillowExifReader().read(image_path)
+
+    assert probe.captured_at == captured_at
+    assert (probe.width_px, probe.height_px) == (32, 24)
+    assert probe.position is None
+    assert probe.relative_altitude_m is None
+
+
+def test_pillow_reader_rejects_image_without_capture_time(tmp_path: Path) -> None:
+    image_path = tmp_path / "no-exif.jpg"
+    Image.new("RGB", (16, 16)).save(image_path)
+
+    with pytest.raises(ImportDataError, match="no EXIF capture timestamp"):
+        PillowExifReader().read(image_path)
+
+
+def test_csv_reader_supports_custom_columns_and_unix_milliseconds(tmp_path: Path) -> None:
+    csv_path = tmp_path / "flight.csv"
+    csv_path.write_text(
+        "time_ms,lat,lon,alt\n"
+        "1785142800000,10.75,106.67,10.5\n",
+        encoding="utf-8",
+    )
+    mapping = TelemetryCsvMapping(
+        timestamp_column="time_ms",
+        latitude_column="lat",
+        longitude_column="lon",
+        relative_altitude_column="alt",
+        timestamp_format=TimestampFormat.UNIX_MILLISECONDS,
+    )
+
+    result = CsvTelemetryReader().read(
+        csv_path,
+        mapping,
+        MissionId("mission-001"),
+        DroneId("drone-01"),
+    )
+
+    assert not result.issues
+    assert len(result.samples) == 1
+    assert result.samples[0].position.latitude == 10.75
+    assert result.samples[0].relative_altitude_m == 10.5
+
+
+def test_csv_reader_reports_invalid_gps_row(tmp_path: Path) -> None:
+    csv_path = tmp_path / "flight.csv"
+    csv_path.write_text(
+        "timestamp,latitude,longitude,relative_altitude_m\n"
+        "2026-07-27T09:30:00+00:00,999,106.67,10\n",
+        encoding="utf-8",
+    )
+
+    result = CsvTelemetryReader().read(
+        csv_path,
+        TelemetryCsvMapping(),
+        MissionId("mission-001"),
+        DroneId("drone-01"),
+    )
+
+    assert not result.samples
+    assert [issue.code for issue in result.issues] == ["invalid_telemetry_row"]
+    assert result.issues[0].row_number == 2
+
+
+def test_mission_manifest_round_trip_uses_portable_paths(tmp_path: Path) -> None:
+    mission = SurveyMission.create(
+        mission_id="mission-manifest",
+        name="Manifest contract",
+        drone_ids=("drone-01", "drone-02", "drone-03"),
+        created_at=datetime(2026, 7, 27, 9, 0, tzinfo=timezone.utc),
+    )
+    camera = CameraProfile(profile_id="rgb", name="RGB camera")
+    sources = tuple(
+        DroneImportSource(
+            drone_id=DroneId(f"drone-0{index}"),
+            image_dir=tmp_path / f"drone-0{index}/images",
+            telemetry_file=tmp_path / f"drone-0{index}/flight.csv",
+            camera_profile=camera,
+        )
+        for index in (1, 2, 3)
+    )
+    request = MissionImportRequest(mission=mission, sources=sources)
+    manifest_path = tmp_path / "mission.json"
+
+    write_mission_manifest(request, manifest_path)
+    loaded = load_mission_manifest(manifest_path)
+
+    assert loaded.mission == mission
+    assert loaded.sources == sources
+    text = manifest_path.read_text()
+    assert '"image_dir": "drone-01/images"' in text
+    assert '"lane_index": 0' in text
+
+
+def test_mission_manifest_rejects_unknown_schema(tmp_path: Path) -> None:
+    path = tmp_path / "mission.json"
+    path.write_text('{"schema_version": 99}', encoding="utf-8")
+
+    with pytest.raises(ImportDataError, match="unsupported mission manifest schema"):
+        load_mission_manifest(path)
