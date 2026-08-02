@@ -22,7 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from uav_crop_analysis.adapters import has_greeneye_bundle_media
+from uav_crop_analysis.adapters import (
+    GreenEyeMissionBundleInitializer,
+    has_greeneye_bundle_media,
+)
 from uav_crop_analysis.application import (
     AnalysisTask,
     ImportReport,
@@ -422,8 +425,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Không thể tạo nhiệm vụ", state.error_message)
             self.statusBar().showMessage(state.error_message)
             return
+        try:
+            bundle = GreenEyeMissionBundleInitializer().create(
+                mission_id=value.mission_id,
+                name=value.name,
+                drone_ids=value.drone_ids,
+                flight_profile=value.flight_profile,
+                camera_profile=value.camera_profile,
+                output_root=self._mission_library_parent(),
+            )
+        except Exception as exc:
+            message = str(exc) or type(exc).__name__
+            QMessageBox.warning(self, "Không thể tạo thư mục nhiệm vụ", message)
+            self.statusBar().showMessage(message)
+            return
+        self.settings.setValue("mission_library/root", str(bundle.parent))
         self.mission_list.set_missions(state.missions)
         self.mission_list.set_camera_profiles(state.camera_profiles)
+        self.statusBar().showMessage(f"Đã tạo nhiệm vụ · {bundle}")
         self.open_planning(value.mission_id)
 
     def open_mission(self, mission_id: str) -> None:
@@ -559,6 +578,13 @@ class MainWindow(QMainWindow):
             and has_greeneye_bundle_media(directory)
         ]
         self._start_next_media_import()
+
+    def _mission_library_parent(self) -> Path:
+        value = self.settings.value("mission_library/root", "")
+        if str(value).strip():
+            root = Path(str(value)).expanduser()
+            return root.parent if root.name == "GreenEye mission" else root
+        return Path.home() / "Documents"
 
     def _start_next_media_import(self) -> None:
         controller = self.import_controller
@@ -749,7 +775,7 @@ class MainWindow(QMainWindow):
         directory = QFileDialog.getExistingDirectory(
             self,
             "Chọn thư mục xuất nhiệm vụ",
-            "",
+            str(self._mission_library_parent()),
         )
         if not directory:
             return

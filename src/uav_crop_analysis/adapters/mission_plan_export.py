@@ -10,6 +10,7 @@ import shutil
 from typing import Any
 from uuid import uuid4
 
+from uav_crop_analysis.domain import CameraProfile, FlightProfile
 from uav_crop_analysis.errors import MissionPlanningError
 from uav_crop_analysis.planning import DroneRoute, MissionPlanExport, PlannedMission
 from uav_crop_analysis.planning.serialization import (
@@ -111,7 +112,9 @@ class GreenEyeMissionBundleExporter:
         root = Path(output_root).expanduser().resolve()
         mission_root = root / "GreenEye mission"
         mission_root.mkdir(parents=True, exist_ok=True)
-        name = _available_name(mission_root, _safe_name(plan.mission_id))
+        name = _existing_bundle_name(mission_root, plan.mission_id) or _available_name(
+            mission_root, _safe_name(plan.mission_id)
+        )
         final = mission_root / name
         staging = mission_root / f".{name}.{uuid4().hex}.tmp"
         routes_dir = staging / "routes"
@@ -121,6 +124,7 @@ class GreenEyeMissionBundleExporter:
         qgc_dir.mkdir(parents=True)
         media_dir.mkdir(parents=True)
         try:
+            _copy_existing_media(final, media_dir)
             mission_json = staging / "mission.json"
             _write_json(mission_json, plan_to_dict(plan))
             route_jsons: list[Path] = []
@@ -128,7 +132,7 @@ class GreenEyeMissionBundleExporter:
             for index, route in enumerate(plan.routes, start=1):
                 stem = f"drone-{index:02d}"
                 drone_media = media_dir / route.drone_id
-                drone_media.mkdir()
+                drone_media.mkdir(exist_ok=True)
                 (drone_media / ".keep").touch()
                 route_json = routes_dir / f"{stem}.plan.json"
                 qgc_plan = qgc_dir / f"{stem}.plan"
@@ -158,7 +162,7 @@ class GreenEyeMissionBundleExporter:
                 "".join(f"{digest}  {relative}\n" for relative, digest in checksums),
                 encoding="utf-8",
             )
-            staging.replace(final)
+            _replace_bundle(staging, final)
         except Exception as exc:
             shutil.rmtree(staging, ignore_errors=True)
             if isinstance(exc, MissionPlanningError):
@@ -178,6 +182,81 @@ class GreenEyeMissionBundleExporter:
             checksums_file=final / checksums_file.relative_to(staging),
             checksums=checksums,
         )
+
+
+class GreenEyeMissionBundleInitializer:
+    """Create the durable mission folder before a route is planned."""
+
+    def create(
+        self,
+        *,
+        mission_id: str,
+        name: str,
+        drone_ids: tuple[str, ...],
+        flight_profile: FlightProfile,
+        camera_profile: CameraProfile | None,
+        output_root: Path,
+    ) -> Path:
+        root = Path(output_root).expanduser().resolve()
+        mission_root = root / "GreenEye mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        folder_name = _safe_name(mission_id)
+        directory = mission_root / folder_name
+        if directory.exists():
+            if _bundle_mission_id(directory) == mission_id:
+                return directory
+            raise MissionPlanningError(
+                "thư mục nhiệm vụ đã tồn tại và không thuộc nhiệm vụ này",
+                context={"directory": str(directory), "mission_id": mission_id},
+            )
+
+        staging = mission_root / f".{folder_name}.{uuid4().hex}.tmp"
+        try:
+            (staging / "routes").mkdir(parents=True)
+            (staging / "qgroundcontrol").mkdir()
+            media = staging / "media"
+            media.mkdir()
+            for drone_id in drone_ids:
+                drone_media = media / drone_id
+                drone_media.mkdir()
+                (drone_media / ".keep").touch()
+            (staging / "routes" / ".keep").touch()
+            (staging / "qgroundcontrol" / ".keep").touch()
+            (media / "README.txt").write_text(
+                "Đặt ảnh chụp của từng drone vào media/<drone-id>/ sau khi bay.\n"
+                "Tệp đường bay sẽ được bổ sung khi xuất đường bay.\n",
+                encoding="utf-8",
+            )
+            _write_json(
+                staging / "mission.json",
+                {
+                    "schema_version": 1,
+                    "kind": "greeneye_mission_draft",
+                    "mission_id": mission_id,
+                    "name": name,
+                    "status": "created_waiting_for_route",
+                    "drone_ids": list(drone_ids),
+                    "flight_profile": {
+                        "altitude_m": flight_profile.altitude_m,
+                        "gimbal_pitch_deg": flight_profile.gimbal_pitch_deg,
+                        "forward_overlap": flight_profile.forward_overlap,
+                        "side_overlap": flight_profile.side_overlap,
+                    },
+                    "camera_profile_id": (
+                        None if camera_profile is None else camera_profile.profile_id
+                    ),
+                },
+            )
+            staging.replace(directory)
+        except Exception as exc:
+            shutil.rmtree(staging, ignore_errors=True)
+            if isinstance(exc, MissionPlanningError):
+                raise
+            raise MissionPlanningError(
+                f"cannot create GreenEye mission bundle: {exc}",
+                context={"mission_id": mission_id},
+            ) from exc
+        return directory
 
 
 def _simple_item(
@@ -221,3 +300,41 @@ def _available_name(root: Path, preferred: str) -> str:
     while (root / f"{preferred}-{index}").exists():
         index += 1
     return f"{preferred}-{index}"
+
+
+def _bundle_mission_id(directory: Path) -> str | None:
+    mission_json = directory / "mission.json"
+    try:
+        value = json.loads(mission_json.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    mission_id = value.get("mission_id") if isinstance(value, dict) else None
+    return mission_id if isinstance(mission_id, str) else None
+
+
+def _existing_bundle_name(root: Path, mission_id: str) -> str | None:
+    preferred = root / _safe_name(mission_id)
+    if preferred.is_dir() and _bundle_mission_id(preferred) == mission_id:
+        return preferred.name
+    return None
+
+
+def _copy_existing_media(previous: Path, destination: Path) -> None:
+    source = previous / "media"
+    if source.is_dir():
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+
+
+def _replace_bundle(staging: Path, final: Path) -> None:
+    if not final.exists():
+        staging.replace(final)
+        return
+    backup = final.parent / f".{final.name}.{uuid4().hex}.backup"
+    final.replace(backup)
+    try:
+        staging.replace(final)
+    except Exception:
+        if backup.exists() and not final.exists():
+            backup.replace(final)
+        raise
+    shutil.rmtree(backup, ignore_errors=True)

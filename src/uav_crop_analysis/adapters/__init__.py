@@ -6,7 +6,11 @@ if TYPE_CHECKING:
     from .image_metadata import PillowExifReader
     from .job_sqlite import SQLiteAnalysisJobRepository
     from .memory import InMemoryMissionRepository
-    from .mission_plan_export import GreenEyeMissionBundleExporter, QGroundControlPlanWriter
+    from .mission_plan_export import (
+        GreenEyeMissionBundleExporter,
+        GreenEyeMissionBundleInitializer,
+        QGroundControlPlanWriter,
+    )
     from .mission_bundle_media import has_greeneye_bundle_media, load_greeneye_bundle_media
     from .model_catalog import RegistryModelCatalog
     from .nodeodm import DockerManagedNodeOdmEngine, DockerNodeOdmRuntime
@@ -21,6 +25,7 @@ if TYPE_CHECKING:
 __all__ = [
     "CsvTelemetryReader",
     "GreenEyeMissionBundleExporter",
+    "GreenEyeMissionBundleInitializer",
     "has_greeneye_bundle_media",
     "InMemoryMissionRepository",
     "JsonMissionPlanRepository",
@@ -44,14 +49,20 @@ __all__ = [
 
 
 def __getattr__(name: str) -> Any:
-    if name in {"GreenEyeMissionBundleExporter", "QGroundControlPlanWriter"}:
+    if name in {
+        "GreenEyeMissionBundleExporter",
+        "GreenEyeMissionBundleInitializer",
+        "QGroundControlPlanWriter",
+    }:
         from .mission_plan_export import (
             GreenEyeMissionBundleExporter,
+            GreenEyeMissionBundleInitializer,
             QGroundControlPlanWriter,
         )
 
         return {
             "GreenEyeMissionBundleExporter": GreenEyeMissionBundleExporter,
+            "GreenEyeMissionBundleInitializer": GreenEyeMissionBundleInitializer,
             "QGroundControlPlanWriter": QGroundControlPlanWriter,
         }[name]
     if name in {"has_greeneye_bundle_media", "load_greeneye_bundle_media"}:

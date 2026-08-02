@@ -10,6 +10,7 @@ import pytest
 
 from uav_crop_analysis.adapters import (
     GreenEyeMissionBundleExporter,
+    GreenEyeMissionBundleInitializer,
     JsonMissionPlanRepository,
     QGroundControlPlanWriter,
     has_greeneye_bundle_media,
@@ -18,7 +19,13 @@ from uav_crop_analysis.adapters import (
 from uav_crop_analysis.api import ApiApplication
 from uav_crop_analysis.bootstrap import build_runtime
 from uav_crop_analysis.cli import main as cli_main
-from uav_crop_analysis.domain import CameraProfile, DroneId, GeoPoint, MissionId
+from uav_crop_analysis.domain import (
+    CameraProfile,
+    DroneId,
+    FlightProfile,
+    GeoPoint,
+    MissionId,
+)
 from uav_crop_analysis.errors import MissionPlanningError
 from uav_crop_analysis.infrastructure import AppConfig, AppPaths
 from uav_crop_analysis.integrations import QGroundControlPlanReader
@@ -216,6 +223,32 @@ def test_bundle_checksums_paths_and_qgc_round_trip(tmp_path: Path) -> None:
         raw = json.loads(qgc_path.read_text(encoding="utf-8"))
         assert len(raw["mission"]["items"]) == len(route.waypoints) * 2
         assert {item["command"] for item in raw["mission"]["items"]} == {16, 206}
+
+
+def test_creation_initializes_bundle_and_export_reuses_it(tmp_path: Path) -> None:
+    created = GreenEyeMissionBundleInitializer().create(
+        mission_id="mission-export",
+        name="Khảo sát khu A",
+        drone_ids=("drone-1", "drone-2"),
+        flight_profile=FlightProfile(),
+        camera_profile=_camera(),
+        output_root=tmp_path,
+    )
+
+    assert created == tmp_path / "GreenEye mission" / "mission-export"
+    assert (created / "mission.json").is_file()
+    assert (created / "routes" / ".keep").is_file()
+    assert (created / "qgroundcontrol" / ".keep").is_file()
+    assert (created / "media" / "drone-1" / ".keep").is_file()
+    image = created / "media" / "drone-1" / "DJI_0001.JPG"
+    image.write_bytes(b"image-placeholder")
+
+    exported = GreenEyeMissionBundleExporter().export(_domain_plan(2), tmp_path)
+
+    assert exported.directory == created
+    assert image.is_file()
+    payload = json.loads(exported.mission_json.read_text(encoding="utf-8"))
+    assert payload["kind"] == "greeneye_mission_plan"
 
 
 def test_bundle_media_layout_builds_a_repeatable_import_request(tmp_path: Path) -> None:
