@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import time
+from typing import Any, cast
 
 import numpy as np
 from PIL import Image
@@ -19,6 +20,8 @@ from uav_crop_analysis.jobs import (  # noqa: E402
     AnalysisJob,
     AnalysisJobConfig,
     AnalysisJobService,
+    AnalysisResult,
+    JobEventType,
     JobStatus,
     SemanticTilePipeline,
 )
@@ -77,7 +80,7 @@ def _write_registry(tmp_path: Path) -> Path:
                         "task": "semantic_segmentation",
                         "status": "test",
                         "class_names": ["background", "crop", "weed"],
-                        "target_classes": ["weed"],
+                        "target_classes": ["crop", "weed"],
                         "input_size": [16, 16],
                         "dataset_version": "unit",
                         "runtime": {
@@ -298,3 +301,45 @@ def test_dispatcher_respects_worker_capacity(tmp_path: Path) -> None:
     assert service.wait(first.job_id, timeout=30).status is JobStatus.COMPLETED
     assert [job.job_id for job in service.dispatch_queued()] == [second.job_id]
     assert service.wait(second.job_id, timeout=30).status is JobStatus.COMPLETED
+
+
+def test_dispatcher_retires_completed_handle_before_starting_next_job(tmp_path: Path) -> None:
+    registry_path = _write_registry(tmp_path)
+    image_path = tmp_path / "retire.png"
+    Image.fromarray(np.zeros((16, 16, 3), dtype=np.uint8), mode="RGB").save(image_path)
+
+    class CompletedHandle:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self, timeout: float = 1.0) -> None:
+            del timeout
+            self.closed = True
+
+    class PendingHandle:
+        def close(self, timeout: float = 1.0) -> None:
+            del timeout
+
+    class FakeWorker:
+        def start(self, _job: AnalysisJob) -> PendingHandle:
+            return PendingHandle()
+
+    repository = SQLiteAnalysisJobRepository(tmp_path / "retire.db")
+    service = AnalysisJobService(repository, worker=cast(Any, FakeWorker()), max_workers=1)
+    config = _config(tmp_path, registry_path, image_path, "retire-results")
+    first = service.submit(config, "job-retire-1")
+    second = service.submit(config, "job-retire-2")
+    completed = first.start().complete(
+        AnalysisResult(tmp_path / "artifacts", "a" * 64, (), {})
+    )
+    repository.save(completed, completed.event(JobEventType.COMPLETED, "completed"))
+    stale_handle = CompletedHandle()
+    service._handles[first.job_id] = cast(Any, stale_handle)
+
+    dispatched = service.dispatch_queued()
+
+    assert stale_handle.closed
+    assert [job.job_id for job in dispatched] == [second.job_id]
+    running_second = repository.get(second.job_id)
+    assert running_second is not None
+    assert running_second.status is JobStatus.RUNNING

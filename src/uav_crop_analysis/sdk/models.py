@@ -20,19 +20,23 @@ class Capabilities:
     report_export: bool
     geospatial_results: bool
     qgroundcontrol_plan_import: bool
+    mission_planning: bool
+    mission_plan_export: bool
+    qgroundcontrol_plan_export: bool
     qgroundcontrol_log_import: bool
     mavsdk_available: bool
     drone_telemetry_read: bool
     drone_mission_read: bool
     drone_commands_enabled: bool
-    nodeodm_configured: bool
+    orthomosaic_engine_configured: bool
+    orthomosaic_engine_name: str
 
 
 @dataclass(frozen=True, slots=True)
 class CreateMissionRequest:
     mission_id: str
     name: str
-    drone_ids: tuple[str, str, str]
+    drone_ids: tuple[str, ...]
     altitude_m: float = 10.0
     gimbal_pitch_deg: float = -90.0
     forward_overlap: float = 0.75
@@ -115,3 +119,75 @@ class ImportMissionView:
     telemetry_count: int
     issue_count: int
     error_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class PlanMissionRequest:
+    mission_id: str
+    camera_profile_id: str
+    polygon_wgs84: tuple[tuple[float, float], ...]
+    homes_wgs84: tuple[tuple[float, float] | None, ...] = ()
+    projected_crs: str | None = None
+    altitude_agl_m: float | None = None
+    gimbal_pitch_deg: float = -90.0
+    forward_overlap: float | None = None
+    side_overlap: float | None = None
+    flight_speed_mps: float = 3.0
+    capture_pause_seconds: float = 1.0
+    sweep_heading_deg: float | None = None
+    minimum_route_separation_m: float = 2.0
+    image_size_px: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedWaypointView:
+    sequence: int
+    latitude: float
+    longitude: float
+    altitude_agl_m: float
+    hold_seconds: float
+    lane_index: int
+    action: str
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedRouteView:
+    drone_id: str
+    home_wgs84: tuple[float, float] | None
+    lane_indices: tuple[int, ...]
+    waypoints: tuple[PlannedWaypointView, ...]
+    estimated_distance_m: float
+    estimated_duration_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningWarningView:
+    code: str
+    message: str
+    drone_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MissionPlanView:
+    mission_id: str
+    generator_version: str
+    projected_crs: str | None
+    polygon_wgs84: tuple[tuple[float, float], ...]
+    camera_profile_id: str
+    camera_profile_sha256: str
+    altitude_agl_m: float
+    forward_overlap: float
+    side_overlap: float
+    flight_speed_mps: float
+    capture_pause_seconds: float
+    effective_sweep_heading_deg: float
+    ground_footprint_m: tuple[float, float]
+    gsd_cm_px: tuple[float | None, float | None]
+    lane_spacing_m: float
+    capture_spacing_m: float
+    area_m2: float
+    coverage_ratio: float
+    capture_count: int
+    export_ready: bool
+    routes: tuple[PlannedRouteView, ...]
+    warnings: tuple[PlanningWarningView, ...]

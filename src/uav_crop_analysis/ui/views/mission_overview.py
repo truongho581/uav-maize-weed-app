@@ -4,18 +4,23 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
-    QStyle,
     QTableView,
     QVBoxLayout,
     QWidget,
 )
 
 from uav_crop_analysis.application.workspace import MissionDataStatus, MissionOverview
+from uav_crop_analysis.ui.icons import ICON_ON_PRIMARY, configure_icon_button
+from uav_crop_analysis.ui.components import (
+    KpiCard,
+    ProgressBarDelegate,
+    StatusBadge,
+    StatusBadgeDelegate,
+)
 from uav_crop_analysis.ui.models import DATA_STATUS_TEXT, DroneTableModel, JobTableModel
 from uav_crop_analysis.ui.views.common import configure_table, divider, stretch_columns
 
@@ -48,15 +53,16 @@ class MissionOverviewPage(QWidget):
         body = QWidget()
         body.setObjectName("OverviewScrollBody")
         root = QVBoxLayout(body)
-        root.setContentsMargins(32, 24, 32, 28)
-        root.setSpacing(18)
+        root.setContentsMargins(24, 20, 24, 24)
+        root.setSpacing(16)
 
         header = QHBoxLayout()
         self.back_button = QPushButton()
-        self.back_button.setObjectName("IconButton")
-        self.back_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack))
-        self.back_button.setToolTip("Quay lại danh sách")
-        self.back_button.setAccessibleName("Quay lại danh sách")
+        configure_icon_button(
+            self.back_button,
+            "arrow-left",
+            "Quay lại danh sách",
+        )
         self.back_button.clicked.connect(self.backRequested)
         header.addWidget(self.back_button)
         title_box = QVBoxLayout()
@@ -69,54 +75,65 @@ class MissionOverviewPage(QWidget):
         title_box.addWidget(self.identifier)
         header.addLayout(title_box)
         header.addStretch()
-        self.status = QLabel()
+        self.status = StatusBadge()
         header.addWidget(self.status)
-        self.data_button = QPushButton("Dữ liệu")
-        self.data_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+        self.data_button = QPushButton()
+        configure_icon_button(
+            self.data_button,
+            "images",
+            "Mở ảnh và thông tin đi kèm",
         )
-        self.data_button.setToolTip("Mở dữ liệu ảnh và metadata")
         self.data_button.clicked.connect(self._request_data)
         header.addWidget(self.data_button)
-        self.spatial_button = QPushButton("Không gian")
-        self.spatial_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_DriveNetIcon)
+        self.spatial_button = QPushButton()
+        configure_icon_button(
+            self.spatial_button,
+            "map",
+            "Mở ảnh ghép và bản đồ mật độ cỏ dại",
         )
-        self.spatial_button.setToolTip("Mở orthomosaic và heatmap không gian")
         self.spatial_button.clicked.connect(self._request_spatial)
         header.addWidget(self.spatial_button)
-        self.report_button = QPushButton("Báo cáo")
-        self.report_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogInfoView)
+        self.report_button = QPushButton()
+        configure_icon_button(
+            self.report_button,
+            "file-chart-column",
+            "Mở phần tổng hợp và xuất báo cáo nhiệm vụ",
         )
-        self.report_button.setToolTip("Mở dashboard và xuất báo cáo nhiệm vụ")
         self.report_button.clicked.connect(self._request_report)
         header.addWidget(self.report_button)
-        self.analysis_button = QPushButton("Phân tích")
-        self.analysis_button.setObjectName("PrimaryButton")
-        self.analysis_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
+        self.analysis_button = QPushButton()
+        configure_icon_button(
+            self.analysis_button,
+            "scan-search",
+            "Mở khu vực xử lý ảnh cho nhiệm vụ",
+            color=ICON_ON_PRIMARY,
         )
-        self.analysis_button.setToolTip("Mở cấu hình phân tích cho nhiệm vụ")
+        self.analysis_button.setObjectName("PrimaryIconButton")
         self.analysis_button.clicked.connect(self._request_analysis)
         header.addWidget(self.analysis_button)
         root.addLayout(header)
         root.addWidget(divider())
 
-        self.metrics = QGridLayout()
-        self.metrics.setHorizontalSpacing(28)
+        self.metrics = QHBoxLayout()
+        self.metrics.setSpacing(12)
         self.metric_values: list[QLabel] = []
-        for column, label in enumerate(("Ảnh", "GPS ảnh", "Độ cao", "Camera")):
-            value_label = QLabel("—")
-            value_label.setObjectName("MetricValue")
-            label_widget = QLabel(label)
-            label_widget.setObjectName("MetricLabel")
-            self.metrics.addWidget(value_label, 0, column)
-            self.metrics.addWidget(label_widget, 1, column)
-            self.metric_values.append(value_label)
-            self.metrics.setColumnStretch(column, 1)
+        for label in ("Ảnh", "GPS ảnh", "Độ cao", "Máy ảnh"):
+            card = KpiCard(label)
+            self.metrics.addWidget(card)
+            self.metric_values.append(card.value)
+        self.metrics.addStretch()
         root.addLayout(self.metrics)
-        root.addWidget(divider())
+
+        self.warning_banner = QWidget()
+        self.warning_banner.setObjectName("WarningBanner")
+        warning_layout = QHBoxLayout(self.warning_banner)
+        warning_layout.setContentsMargins(12, 8, 8, 8)
+        self.warning_text = QLabel("Một số ảnh thiếu GPS hoặc dữ liệu hành trình.")
+        warning_layout.addWidget(self.warning_text, 1)
+        self.warning_action = QPushButton("Xem dữ liệu")
+        self.warning_action.clicked.connect(self._request_data)
+        warning_layout.addWidget(self.warning_action)
+        root.addWidget(self.warning_banner)
 
         flight_title = QLabel("Cấu hình bay")
         flight_title.setObjectName("SectionTitle")
@@ -137,16 +154,18 @@ class MissionOverviewPage(QWidget):
         self.drone_table.setFixedHeight(174)
         root.addWidget(self.drone_table)
 
-        job_title = QLabel("Phân tích gần đây")
+        job_title = QLabel("Xử lý gần đây")
         job_title.setObjectName("SectionTitle")
         root.addWidget(job_title)
         self.job_table = QTableView()
         self.job_table.setModel(self.job_model)
-        self.job_table.setAccessibleName("Các job phân tích gần đây")
+        self.job_table.setAccessibleName("Các tác vụ xử lý gần đây")
         configure_table(self.job_table, row_height=42)
+        self.job_table.setItemDelegateForColumn(2, StatusBadgeDelegate(self.job_table))
+        self.job_table.setItemDelegateForColumn(3, ProgressBarDelegate(self.job_table))
         stretch_columns(self.job_table, 1)
         self.job_table.setMinimumHeight(158)
-        self.no_jobs = QLabel("Chưa có job phân tích.")
+        self.no_jobs = QLabel("Chưa có tác vụ xử lý.")
         self.no_jobs.setObjectName("MutedLabel")
         root.addWidget(self.job_table)
         root.addWidget(self.no_jobs)
@@ -159,19 +178,17 @@ class MissionOverviewPage(QWidget):
         self._mission_id = overview.mission.mission_id.value
         self.title.setText(overview.mission.name)
         self.identifier.setText(self._mission_id)
-        self.status.setText(DATA_STATUS_TEXT[overview.data_status])
-        self.status.setObjectName(STATUS_OBJECTS[overview.data_status])
-        self.status.style().unpolish(self.status)
-        self.status.style().polish(self.status)
+        self.status.set_status(DATA_STATUS_TEXT[overview.data_status])
+        self.warning_banner.setVisible(overview.data_status is MissionDataStatus.INCOMPLETE)
         self.metric_values[0].setText(f"{overview.image_count:,}")
         self.metric_values[1].setText(f"{overview.gps_coverage * 100:.0f}%")
         self.metric_values[2].setText(f"{overview.altitude_coverage * 100:.0f}%")
         self.metric_values[3].setText(str(overview.camera_count))
         profile = overview.mission.flight_profile
         self.flight_profile.setText(
-            f"{profile.altitude_m:g} m  ·  Gimbal {profile.gimbal_pitch_deg:g}°  ·  "
-            f"Overlap dọc {profile.forward_overlap * 100:.0f}%  ·  "
-            f"Overlap ngang {profile.side_overlap * 100:.0f}%  ·  Đứng yên chụp"
+            f"{profile.altitude_m:g} m  ·  Góc máy {profile.gimbal_pitch_deg:g}°  ·  "
+            f"Chồng phủ dọc {profile.forward_overlap * 100:.0f}%  ·  "
+            f"Chồng phủ ngang {profile.side_overlap * 100:.0f}%  ·  Đứng yên chụp"
         )
         self.drone_model.set_rows(overview.drones)
         self.job_model.set_rows(overview.recent_jobs)
@@ -182,7 +199,7 @@ class MissionOverviewPage(QWidget):
         self.spatial_button.setEnabled(overview.image_count > 0)
         self.report_button.setEnabled(True)
         if overview.can_analyze:
-            self.analysis_button.setToolTip("Mở cấu hình phân tích cho nhiệm vụ")
+            self.analysis_button.setToolTip("Mở khu vực xử lý ảnh cho nhiệm vụ")
         else:
             self.analysis_button.setToolTip("Nhiệm vụ chưa có ảnh để phân tích")
 

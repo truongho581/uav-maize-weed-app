@@ -72,14 +72,16 @@ Quy tắc phụ thuộc:
 | Inference phát hành | ONNX Runtime CPU mặc định | Runtime đa nền tảng, giảm coupling vào framework train |
 | Inference phát triển | PyTorch/Ultralytics tùy chọn | Dùng checkpoint hiện có và benchmark/export model |
 | Geospatial | Rasterio, PyProj, Shapely | GeoTIFF, hệ tọa độ và geometry; đóng thành optional feature |
-| Orthomosaic | Adapter NodeODM/ODM tùy chọn | Dùng engine photogrammetry đã được kiểm chứng |
+| Orthomosaic | NodeODM tự quản lý qua Docker/PyODM | Người dùng chỉ cài Docker, app tự pull/start container |
 | Drone integration | MAVSDK adapter tùy chọn | Telemetry/mission qua API cấp cao của MAVLink |
 | Plugin | Python entry points; thêm `pluggy` khi cần hook phức tạp | Plugin có version và được phát hiện độc lập |
 | Test | pytest, pytest-qt, coverage | Test core, UI model và luồng desktop |
 | Quality | Ruff, MyPy, pre-commit | Format, lint và type checking tái lập |
 | Packaging | PyInstaller trước; đánh giá `pyside6-deploy` sau | Tận dụng spec hiện có và giảm thay đổi đồng thời |
 
-Không đưa OpenDroneMap vào binary desktop ở bản đầu. Ứng dụng gọi một NodeODM/ODM do người dùng cài riêng hoặc server nội bộ. Cách này giảm kích thước bộ cài, giảm lỗi native dependency và cho phép thay backend photogrammetry.
+Không đưa engine photogrammetry vào binary desktop. Ứng dụng kiểm tra Docker cục bộ,
+tự pull/start image NodeODM chính thức và điều khiển bằng PyODM; người dùng không cần
+build image, chạy container hoặc cấu hình endpoint.
 
 ### 3.3. Cấu trúc repository đích
 
@@ -384,12 +386,12 @@ Kiểm tra:
 
 Trạng thái: **đã thực hiện phần weed semantic và hạ tầng geospatial**; xem
 `docs/phase7/PHASE7_REVIEW.md`. Maize density/stage chờ checkpoint instance như đã thống nhất;
-control point/seam trên dữ liệu thật chờ mission ba drone và NodeODM triển khai.
+control point/seam trên dữ liệu thật chờ mission ba drone và Docker được cài đặt.
 
 Phạm vi:
 
 - Tách rõ `preview mosaic` và `georeferenced orthomosaic`.
-- NodeODM/ODM adapter; theo dõi task và nhập GeoTIFF/CRS/transform.
+- Docker-managed NodeODM adapter; theo dõi task và nhập GeoTIFF/CRS/transform.
 - Chiếu prediction lên orthomosaic; heatmap weed semantic, maize density/stage.
 - Xuất GeoTIFF/GeoJSON/PNG có legend và confidence/data-quality layer.
 - Fallback theo grid/GPS chỉ tạo spatial preview và phải gắn nhãn độ tin cậy.
@@ -397,7 +399,7 @@ Phạm vi:
 Kiểm tra:
 
 - Synthetic geospatial fixtures có tọa độ kỳ vọng.
-- So sánh control points/extent/CRS với kết quả ODM tham chiếu.
+- So sánh control points/extent/CRS với kết quả NodeODM tham chiếu.
 - Kiểm tra seam, vùng không dữ liệu, ảnh trùng và ranh giới giữa ba drone.
 - Review trực quan trên một mission đầy đủ và một mission thiếu dữ liệu.
 
@@ -522,7 +524,7 @@ Dataset và checkpoint của dự án đã có sẵn, vì vậy roadmap không b
 - [PyInstaller](https://github.com/pyinstaller/pyinstaller): đóng gói Python cho Windows, Linux và macOS; build native theo OS.
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime): inference đa nền tảng và execution provider theo phần cứng.
 - [pluggy](https://github.com/pytest-dev/pluggy): plugin hook tối giản, phù hợp khi entry points không đủ.
-- [OpenDroneMap/ODM](https://github.com/OpenDroneMap/ODM) và [NodeODM](https://github.com/OpenDroneMap/NodeODM): orthomosaic/GeoTIFF và API xử lý ảnh UAV.
+- [OpenDroneMap/NodeODM](https://github.com/OpenDroneMap/NodeODM): orthomosaic GeoTIFF qua API và Docker.
 - [MAVSDK-Python](https://github.com/mavlink/MAVSDK-Python): client Python qua gRPC cho MAVLink telemetry/mission.
 - [QGroundControl](https://github.com/mavlink/qgroundcontrol): tham khảo mission planning, multi-vehicle và UX vận hành.
 - [napari architecture](https://napari.org/stable/developers/architecture/index.html): tách model/event/Qt và layer-based scientific viewer.

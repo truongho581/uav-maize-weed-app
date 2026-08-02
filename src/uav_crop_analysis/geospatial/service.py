@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 import shutil
 from uuid import uuid4
@@ -26,6 +27,7 @@ from uav_crop_analysis.geospatial.models import (
 )
 from uav_crop_analysis.geospatial.ports import (
     GeoRasterPort,
+    ImageReference,
     OrthomosaicEngine,
     PreviewMosaicBuilder,
     ProgressCallback,
@@ -56,8 +58,19 @@ class SpatialWorkspaceService:
         self.output_root = Path(output_root).expanduser().resolve()
 
     @property
-    def nodeodm_configured(self) -> bool:
+    def orthomosaic_engine_configured(self) -> bool:
         return self._engine is not None
+
+    @property
+    def orthomosaic_engine_name(self) -> str:
+        return str(getattr(self._engine, "display_name", "NodeODM (Docker local)"))
+
+    @property
+    def orthomosaic_engine_location(self) -> str | None:
+        if self._engine is None:
+            return None
+        public_location = getattr(self._engine, "public_location", None)
+        return str(public_location) if public_location else None
 
     def get_workspace(self, mission_id: str) -> SpatialWorkspace | None:
         mission = self._missions.get(MissionId(mission_id))
@@ -72,7 +85,9 @@ class SpatialWorkspaceService:
                 item.relative_altitude_m is not None for item in images
             ),
             products=self._products.list_for_mission(mission_id),
-            nodeodm_configured=self.nodeodm_configured,
+            orthomosaic_engine_configured=self.orthomosaic_engine_configured,
+            orthomosaic_engine_name=self.orthomosaic_engine_name,
+            orthomosaic_engine_location=self.orthomosaic_engine_location,
         )
 
     def list_semantic_models(self) -> tuple[AnalysisModelOption, ...]:
@@ -145,17 +160,42 @@ class SpatialWorkspaceService:
             raise GeospatialError(f"mission does not exist: {mission_id}")
         if not workspace.geospatial_ready:
             raise GeospatialError(
-                "all mission images require GPS before NodeODM processing"
+                "all mission images require GPS before orthomosaic processing"
             )
         if self._engine is None:
             raise GeospatialError("NodeODM engine is not configured")
         mission = self._require_mission(mission_id)
         images = self._missions.list_image_assets(mission.mission_id)
+        camera_profiles = {
+            profile.profile_id: profile
+            for profile in self._missions.list_camera_profiles(mission.mission_id)
+        }
         task_dir = self.output_root / mission_id / f"nodeodm-{uuid4().hex}"
         source, provenance = self._engine.create(
             mission_id,
             tuple(item.source_path for item in images),
             task_dir,
+            image_references=tuple(
+                ImageReference(
+                    path=item.source_path,
+                    longitude=item.position.longitude,
+                    latitude=item.position.latitude,
+                    altitude_m=(
+                        item.absolute_altitude_m
+                        if item.absolute_altitude_m is not None
+                        else item.relative_altitude_m
+                    ),
+                    gsd_cm_per_px=_source_gsd_cm_per_px(
+                        camera_profiles.get(item.camera_profile_id or ""),
+                        item.relative_altitude_m
+                        if item.relative_altitude_m is not None
+                        else mission.flight_profile.altitude_m,
+                        item.width_px,
+                    ),
+                )
+                for item in images
+                if item.position is not None
+            ),
             progress=progress,
         )
         return self.import_orthomosaic(
@@ -163,7 +203,6 @@ class SpatialWorkspaceService:
             source,
             provenance=provenance,
         )
-
     def submit_orthomosaic_analysis(
         self,
         product_id: str,
@@ -300,3 +339,17 @@ class SpatialWorkspaceService:
         if product.kind is not kind:
             raise GeospatialError(f"spatial product must be {kind.value}")
         return product
+
+
+def _source_gsd_cm_per_px(
+    camera: object | None,
+    altitude_m: float,
+    image_width_px: int,
+) -> float | None:
+    """Estimate source GSD from nadir-flight metadata for NodeODM resolution."""
+
+    horizontal_fov = getattr(camera, "horizontal_fov_deg", None)
+    if horizontal_fov is None or altitude_m <= 0 or image_width_px <= 0:
+        return None
+    ground_width_m = 2.0 * altitude_m * math.tan(math.radians(horizontal_fov) / 2.0)
+    return round(ground_width_m / image_width_px * 100.0, 6)

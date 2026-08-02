@@ -1,0 +1,20 @@
+{
+  "checkpoint": "best.pth",
+  "checkpoint_epoch": 39,
+  "test_loss": 0.19687888413667678,
+  "test_target_miou": 0.6023004949092865,
+  "test_target_mdice": 0.7492758631706238,
+  "test_miou_all": 0.7118485569953918,
+  "test_mdice_all": 0.820929765701294,
+  "ious": {
+    "background": 0.9309446811676025,
+    "crop": 0.6742058396339417,
+    "weed": 0.5303951501846313
+  },
+  "dice": {
+    "background": 0.9642375707626343,
+    "crop": 0.8054037690162659,
+    "weed": 0.6931479573249817
+  },
+  "notes": "Joint MaizeMask + WeedsGalore train; MaizeMask-only fixed validation and held-out test. Not a primary paper benchmark."
+}

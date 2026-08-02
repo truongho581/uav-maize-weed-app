@@ -91,7 +91,7 @@ def _registry(root: Path) -> Path:
                 "task": "semantic_segmentation",
                 "status": "deployment_ready",
                 "class_names": ["background", "crop", "weed"],
-                "target_classes": ["weed"],
+                "target_classes": ["crop", "weed"],
                 "runtime": {"kind": "pytorch", "output_adapter": "semantic_logits"},
                 "artifacts": [
                     {
@@ -168,7 +168,7 @@ def test_data_workspace_groups_three_drones_and_quality_issues(tmp_path: Path) -
     assert data.drones[2].images[0].issue_codes == ("source_missing",)
 
 
-def test_analysis_catalog_keeps_weed_semantic_and_maize_instance_separate(
+def test_analysis_catalog_keeps_crop_weed_semantic_and_maize_instance_separate(
     tmp_path: Path,
 ) -> None:
     _, analysis, _ = _services(tmp_path)
@@ -176,7 +176,7 @@ def test_analysis_catalog_keeps_weed_semantic_and_maize_instance_separate(
     semantic = analysis.list_models(AnalysisTask.SEMANTIC)
     instance = analysis.list_models(AnalysisTask.MAIZE_INSTANCE)
 
-    assert semantic[0].target_classes == ("weed",)
+    assert semantic[0].target_classes == ("crop", "weed")
     assert semantic[0].available
     assert instance[0].target_classes == ("maize2", "maize4", "maize6")
     assert not instance[0].available

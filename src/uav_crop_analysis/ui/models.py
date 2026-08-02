@@ -13,9 +13,11 @@ from uav_crop_analysis.application.workspace import (
     JobSummary,
     MissionDataStatus,
     MissionSummary,
+    MissionWorkflowStatus,
 )
 from uav_crop_analysis.application.data_workspace import DataQualityIssue, ImageDataRow
 from uav_crop_analysis.jobs.models import AnalysisJob, JobStatus
+from uav_crop_analysis.model_names import display_model_name
 from uav_crop_analysis.geospatial import (
     SpatialAccuracy,
     SpatialProduct,
@@ -52,20 +54,29 @@ JOB_STATUS_TEXT = {
     JobStatus.COMPLETED: "Hoàn thành",
 }
 
+WORKFLOW_STATUS_TEXT = {
+    MissionWorkflowStatus.CREATED: "Mới tạo · chưa có đường bay",
+    MissionWorkflowStatus.PLANNED_NO_MEDIA: "Đã có đường bay · chưa có media",
+    MissionWorkflowStatus.MEDIA_NO_PLAN: "Đã có media · chưa có đường bay",
+    MissionWorkflowStatus.PLANNED_WITH_MEDIA: "Đã có đường bay và media · chưa xử lý",
+    MissionWorkflowStatus.ANALYZED_NO_HEATMAP: "Đã xử lý · chưa có heatmap",
+    MissionWorkflowStatus.COMPLETE: "Hoàn tất · đã có heatmap",
+}
+
 SPATIAL_KIND_TEXT = {
-    SpatialProductKind.PREVIEW_MOSAIC: "Preview 3 làn",
-    SpatialProductKind.ORTHOMOSAIC: "Orthomosaic",
-    SpatialProductKind.WEED_HEATMAP: "Heatmap cỏ dại",
+    SpatialProductKind.PREVIEW_MOSAIC: "Ảnh xem nhanh 3 làn",
+    SpatialProductKind.ORTHOMOSAIC: "Ảnh ghép có tọa độ",
+    SpatialProductKind.WEED_HEATMAP: "Bản đồ mật độ cỏ dại",
 }
 
 SPATIAL_ACCURACY_TEXT = {
-    SpatialAccuracy.PREVIEW_ONLY: "Không georeference",
-    SpatialAccuracy.GEOREFERENCED: "Có georeference",
+    SpatialAccuracy.PREVIEW_ONLY: "Không có tọa độ",
+    SpatialAccuracy.GEOREFERENCED: "Đã định vị",
 }
 
 
 class MissionTableModel(QAbstractTableModel):
-    HEADERS = ("Nhiệm vụ", "Thời gian", "Ảnh", "GPS", "Dữ liệu", "Phân tích")
+    HEADERS = ("Nhiệm vụ", "Thời gian", "Ảnh", "GPS", "Drone", "Trạng thái")
 
     def __init__(self, rows: Sequence[MissionSummary] = ()) -> None:
         super().__init__()
@@ -90,6 +101,12 @@ class MissionTableModel(QAbstractTableModel):
     ) -> Any:
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
             return self.HEADERS[section]
+        if (
+            role == Qt.ItemDataRole.TextAlignmentRole
+            and orientation == Qt.Orientation.Horizontal
+            and section in {2, 3, 4}
+        ):
+            return int(Qt.AlignmentFlag.AlignCenter)
         return None
 
     def data(
@@ -103,8 +120,8 @@ class MissionTableModel(QAbstractTableModel):
         if role == MISSION_ID_ROLE:
             return item.mission_id
         if role == STATUS_ROLE:
-            return item.data_status.value
-        if role == Qt.ItemDataRole.TextAlignmentRole and index.column() in {2, 3}:
+            return item.workflow_status.value
+        if role == Qt.ItemDataRole.TextAlignmentRole and index.column() in {2, 3, 4}:
             return int(Qt.AlignmentFlag.AlignCenter)
         if role != Qt.ItemDataRole.DisplayRole:
             return None
@@ -113,14 +130,14 @@ class MissionTableModel(QAbstractTableModel):
             _format_datetime(item.created_at),
             f"{item.image_count:,}",
             _format_percent(item.gps_coverage),
-            DATA_STATUS_TEXT[item.data_status],
-            JOB_STATUS_TEXT[item.latest_job_status] if item.latest_job_status else "—",
+            str(item.drone_count),
+            WORKFLOW_STATUS_TEXT[item.workflow_status],
         )
         return values[index.column()]
 
 
 class DroneTableModel(QAbstractTableModel):
-    HEADERS = ("Drone", "Làn", "Ảnh", "GPS ảnh", "Độ cao", "Telemetry")
+    HEADERS = ("Drone", "Làn", "Ảnh", "GPS ảnh", "Độ cao", "Mẫu hành trình")
 
     def __init__(self, rows: Sequence[DroneCoverage] = ()) -> None:
         super().__init__()
@@ -160,7 +177,7 @@ class DroneTableModel(QAbstractTableModel):
 
 
 class JobTableModel(QAbstractTableModel):
-    HEADERS = ("Job", "Model", "Trạng thái", "Tiến độ", "Cập nhật")
+    HEADERS = ("Tác vụ", "Mô hình", "Trạng thái", "Tiến độ", "Cập nhật")
 
     def __init__(self, rows: Sequence[JobSummary] = ()) -> None:
         super().__init__()
@@ -194,7 +211,7 @@ class JobTableModel(QAbstractTableModel):
             return None
         values = (
             item.job_id,
-            item.model_id,
+            display_model_name(item.model_id),
             JOB_STATUS_TEXT[item.status],
             _format_percent(item.progress),
             _format_datetime(item.updated_at),
@@ -225,6 +242,12 @@ class ImageDataTableModel(QAbstractTableModel):
     ) -> Any:
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
             return self.HEADERS[section]
+        if (
+            role == Qt.ItemDataRole.TextAlignmentRole
+            and orientation == Qt.Orientation.Horizontal
+            and section in {0, 3, 5, 6}
+        ):
+            return int(Qt.AlignmentFlag.AlignCenter)
         return None
 
     def data(self, index: ModelIndex, role: int = 0) -> Any:
@@ -305,7 +328,7 @@ class QualityIssueTableModel(QAbstractTableModel):
 
 
 class AnalysisJobTableModel(QAbstractTableModel):
-    HEADERS = ("Job", "Model", "Trạng thái", "Giai đoạn", "Tiến độ", "Ảnh", "Cập nhật")
+    HEADERS = ("Tác vụ", "Trạng thái", "Cập nhật")
 
     def __init__(self, rows: Sequence[AnalysisJob] = ()) -> None:
         super().__init__()
@@ -334,6 +357,12 @@ class AnalysisJobTableModel(QAbstractTableModel):
     ) -> Any:
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
             return self.HEADERS[section]
+        if (
+            role == Qt.ItemDataRole.TextAlignmentRole
+            and orientation == Qt.Orientation.Horizontal
+            and section == 1
+        ):
+            return int(Qt.AlignmentFlag.AlignCenter)
         return None
 
     def data(self, index: ModelIndex, role: int = 0) -> Any:
@@ -342,26 +371,26 @@ class AnalysisJobTableModel(QAbstractTableModel):
         item = self._rows[index.row()]
         if role == JOB_ID_ROLE:
             return item.job_id
-        if role == Qt.ItemDataRole.ToolTipRole and item.error is not None:
-            return item.error.message
-        if role == Qt.ItemDataRole.TextAlignmentRole and index.column() in {4, 5}:
+        if role == Qt.ItemDataRole.ToolTipRole:
+            error = f"\nLỗi: {item.error.message}" if item.error else ""
+            return (
+                f"Tác vụ: {item.job_id}\n"
+                f"Mô hình: {display_model_name(item.config.model_id)}{error}"
+            )
+        if role == Qt.ItemDataRole.TextAlignmentRole and index.column() == 1:
             return int(Qt.AlignmentFlag.AlignCenter)
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         values = (
-            item.job_id,
-            item.config.model_id,
-            JOB_STATUS_TEXT[item.status],
-            item.stage.value,
-            _format_percent(item.progress),
-            str(len(item.config.inputs)),
+            f"{display_model_name(item.config.model_id)} · {len(item.config.inputs)} ảnh",
+            f"{JOB_STATUS_TEXT[item.status]} · {_format_percent(item.progress)}",
             _format_datetime(item.updated_at),
         )
         return values[index.column()]
 
 
 class SpatialProductTableModel(QAbstractTableModel):
-    HEADERS = ("Sản phẩm", "Độ chính xác", "CRS", "Kích thước", "GSD raster", "Tạo lúc")
+    HEADERS = ("Lớp bản đồ", "Định vị", "Hệ tọa độ", "Kích thước", "GSD", "Tạo lúc")
 
     def __init__(self, rows: Sequence[SpatialProduct] = ()) -> None:
         super().__init__()
@@ -411,7 +440,7 @@ class SpatialProductTableModel(QAbstractTableModel):
 
 
 class ReportDroneTableModel(QAbstractTableModel):
-    HEADERS = ("Drone", "Làn", "Ảnh", "Hợp lệ", "Có lỗi", "Đã AI", "GPS", "Weed TB")
+    HEADERS = ("Drone", "Làn", "Ảnh", "Hợp lệ", "Có lỗi", "Đã AI", "GPS", "Cỏ dại TB")
 
     def __init__(self, rows: Sequence[ReportDroneSummary] = ()) -> None:
         super().__init__()
@@ -457,7 +486,7 @@ class ReportDroneTableModel(QAbstractTableModel):
 
 
 class ReportImageTableModel(QAbstractTableModel):
-    HEADERS = ("Drone", "Ảnh", "Thời gian", "Chất lượng", "Weed", "Maize")
+    HEADERS = ("Drone", "Ảnh", "Thời gian", "Chất lượng", "Cỏ dại", "Cây ngô")
 
     def __init__(self, rows: Sequence[ReportImageRecord] = ()) -> None:
         super().__init__()
@@ -488,8 +517,10 @@ class ReportImageTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             return (
                 f"{item.source_path}\n"
-                f"Model: {item.model_id or '—'} · {item.model_version or '—'}\n"
-                f"{', '.join(item.issue_codes) or 'valid'}"
+                f"Mô hình: "
+                f"{display_model_name(item.model_id) if item.model_id else '—'} · "
+                f"{item.model_version or '—'}\n"
+                f"{', '.join(item.issue_codes) or 'hợp lệ'}"
             )
         if role != Qt.ItemDataRole.DisplayRole:
             return None
@@ -500,6 +531,7 @@ class ReportImageTableModel(QAbstractTableModel):
             {
                 "valid": "Hợp lệ",
                 "warning": "Cảnh báo",
+                "issue": "Có vấn đề",
                 "error": "Lỗi",
             }.get(item.quality_status, item.quality_status),
             (
@@ -507,13 +539,13 @@ class ReportImageTableModel(QAbstractTableModel):
                 if item.weed_coverage_percent is not None
                 else "—"
             ),
-            "Chờ checkpoint" if item.maize_instance_count is None else str(item.maize_instance_count),
+            "Chờ trọng số" if item.maize_instance_count is None else str(item.maize_instance_count),
         )
         return values[index.column()]
 
 
 class ReportAnalysisTableModel(QAbstractTableModel):
-    HEADERS = ("Job", "Trạng thái", "Model", "Phiên bản", "Ảnh", "Ngưỡng")
+    HEADERS = ("Tác vụ", "Trạng thái", "Mô hình", "Phiên bản", "Ảnh", "Ngưỡng")
 
     def __init__(self, rows: Sequence[ReportAnalysis] = ()) -> None:
         super().__init__()
@@ -544,7 +576,7 @@ class ReportAnalysisTableModel(QAbstractTableModel):
         values = (
             item.job_id,
             item.status,
-            item.model_id,
+            display_model_name(item.model_id),
             item.model_version or "—",
             str(item.image_count),
             f"{item.weed_threshold:.2f}",

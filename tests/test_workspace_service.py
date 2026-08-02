@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from uav_crop_analysis.adapters import SQLiteAnalysisJobRepository, SQLiteMissionRepository
-from uav_crop_analysis.application import MissionDataStatus, MissionWorkspaceService
+from uav_crop_analysis.application import (
+    MissionDataStatus,
+    MissionWorkflowStatus,
+    MissionWorkspaceService,
+)
 from uav_crop_analysis.domain import DroneId, GeoPoint, ImageAsset, SurveyMission
 from uav_crop_analysis.jobs import AnalysisInput, AnalysisJob, AnalysisJobConfig, JobEventType
 
@@ -120,3 +124,20 @@ def test_workspace_returns_none_for_unknown_mission(tmp_path: Path) -> None:
     )
 
     assert workspace.get_overview("missing") is None
+
+
+def test_workspace_reports_planned_mission_without_media(tmp_path: Path) -> None:
+    database = tmp_path / "app.db"
+    missions = SQLiteMissionRepository(database)
+    jobs = SQLiteAnalysisJobRepository(database)
+    mission = _mission()
+    missions.add(mission)
+
+    class Plans:
+        def get(self, mission_id: str) -> object | None:
+            return object() if mission_id == mission.mission_id.value else None
+
+    summary = MissionWorkspaceService(missions, jobs, Plans()).list_missions()[0]
+
+    assert summary.drone_count == 3
+    assert summary.workflow_status is MissionWorkflowStatus.PLANNED_NO_MEDIA

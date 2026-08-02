@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import shutil
 from typing import Any
 from uuid import uuid4
 
@@ -77,6 +78,25 @@ class AnalysisJobService:
             handle.request_cancel()
         return job
 
+    def delete(self, job_id: str) -> None:
+        """Delete a queued or terminal job and the artifacts it owns."""
+        self._retire_handle(job_id)
+        job = self._require_job(job_id)
+        if job.status not in {
+            JobStatus.QUEUED,
+            JobStatus.COMPLETED,
+            JobStatus.CANCELLED,
+            JobStatus.FAILED,
+        }:
+            raise JobStateError("running jobs must be cancelled before deletion")
+        job_root = (job.config.output_root / job.job_id).resolve()
+        output_root = job.config.output_root.resolve()
+        if job_root.parent != output_root:
+            raise JobStateError("job artifact path is outside the configured output root")
+        if job_root.is_dir():
+            shutil.rmtree(job_root)
+        self.repository.delete(job_id)
+
     def retry(self, job_id: str, *, force: bool = False, start: bool = True) -> AnalysisJob:
         self._retire_handle(job_id)
         current = self._require_job(job_id)
@@ -145,6 +165,7 @@ class AnalysisJobService:
         return self.dispatch_queued()
 
     def dispatch_queued(self) -> tuple[AnalysisJob, ...]:
+        self._retire_terminal_handles()
         available = max(0, self.max_workers - len(self._handles))
         queued = self.repository.list_by_status((JobStatus.QUEUED,))[:available]
         return tuple(self.start(job.job_id) for job in queued)
@@ -203,6 +224,14 @@ class AnalysisJobService:
         handle = self._handles.pop(job_id, None)
         if handle is not None:
             handle.close()
+
+    def _retire_terminal_handles(self) -> None:
+        terminal = {JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.FAILED}
+        for job_id, handle in tuple(self._handles.items()):
+            job = self.repository.get(job_id)
+            if job is not None and job.status in terminal:
+                handle.close(timeout=0.2)
+                self._handles.pop(job_id, None)
 
 
 def _coalesce_progress(messages: tuple[WorkerMessage, ...]) -> tuple[WorkerMessage, ...]:

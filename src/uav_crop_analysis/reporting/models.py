@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Mapping
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -49,6 +50,8 @@ class ReportImageRecord:
     maize_instance_count: int | None = None
     maize_density_plants_m2: float | None = None
     maize_canopy_area_m2: float | None = None
+    class_coverage_percent: Mapping[str, float] | None = None
+    class_area_m2: Mapping[str, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +138,16 @@ class MissionReport:
             item.weed_coverage_percent
             for item in self.images
             if item.weed_coverage_percent is not None
+        ]
+        return sum(values) / len(values) if values else None
+
+    @property
+    def mean_crop_coverage_percent(self) -> float | None:
+        values = [
+            float(item.class_coverage_percent["crop"])
+            for item in self.images
+            if item.class_coverage_percent is not None
+            and isinstance(item.class_coverage_percent.get("crop"), (int, float))
         ]
         return sum(values) / len(values) if values else None
 

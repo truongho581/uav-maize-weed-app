@@ -13,11 +13,21 @@ dist/
 htmlcov/
 *.egg-info/
 *.log
-models/*.pt
-models/*.pth
-models/*.ckpt
-models/*.onnx
+models/**/*.pt
+models/**/*.pth
+models/**/*.ckpt
+models/**/*.onnx
+sample_data/simulated_missions/
+GreenEye mission/
+GreenEye-mission-*/
+*-report-*/
+misson_file.zip
+yeucau.txt
 
 # Source acceptance records may contain personal or financial attachments.
 Báo cáo nghiệm thu CN2025/
 *nghi*m thu CN2025/
+project_data/
+CN2025/
+review_screenshots/
+ChatGPT Image*.png

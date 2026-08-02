@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from uav_crop_analysis.application.ports import MissionDataRepository
-from uav_crop_analysis.domain import CameraProfile, MissionId, SurveyMission
+from uav_crop_analysis.domain import CameraProfile, DroneId, MissionId, SurveyMission
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +57,7 @@ class MissionDataWorkspace:
     drones: tuple[DroneDataGroup, ...]
     cameras: tuple[CameraProfile, ...]
     issues: tuple[DataQualityIssue, ...]
+    camera_catalog: tuple[CameraProfile, ...] = ()
 
     @property
     def image_count(self) -> int:
@@ -74,6 +75,7 @@ class MissionDataWorkspaceService:
         assets = self._repository.list_image_assets(mission.mission_id)
         telemetry = self._repository.list_telemetry_samples(mission.mission_id)
         cameras = self._repository.list_camera_profiles(mission.mission_id)
+        camera_catalog = self._repository.list_saved_camera_profiles()
         rows: list[ImageDataRow] = []
         issues: list[DataQualityIssue] = []
         for asset in assets:
@@ -166,4 +168,22 @@ class MissionDataWorkspaceService:
             drones=groups,
             cameras=cameras,
             issues=tuple(issues),
+            camera_catalog=camera_catalog,
         )
+
+    def save_camera_profile(
+        self,
+        mission_id: str,
+        profile: CameraProfile,
+        drone_ids: tuple[str, ...],
+    ) -> MissionDataWorkspace:
+        mission = self._repository.get(MissionId(mission_id))
+        if mission is None:
+            raise ValueError(f"mission does not exist: {mission_id}")
+        self._repository.save_camera_profile(
+            mission.mission_id, profile, tuple(DroneId(value) for value in drone_ids)
+        )
+        updated = self.get_data(mission_id)
+        if updated is None:
+            raise ValueError(f"mission does not exist: {mission_id}")
+        return updated

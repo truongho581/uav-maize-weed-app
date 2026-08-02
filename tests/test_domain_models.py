@@ -37,20 +37,48 @@ def test_flight_profile_rejects_invalid_overlap(overlap: float) -> None:
         FlightProfile(forward_overlap=overlap)
 
 
-def test_survey_mission_requires_three_unique_parallel_lanes() -> None:
+@pytest.mark.parametrize("drone_count", [1, 2, 3])
+def test_survey_mission_accepts_one_to_three_unique_parallel_lanes(
+    drone_count: int,
+) -> None:
+    drone_ids = tuple(f"drone-{index:02d}" for index in range(1, drone_count + 1))
     mission = SurveyMission.create(
         mission_id="mission-001",
         name="Ruong ngo D1",
-        drone_ids=("drone-01", "drone-02", "drone-03"),
+        drone_ids=drone_ids,
         created_at=datetime(2026, 7, 27, tzinfo=timezone.utc),
     )
 
-    assert [assignment.lane_index for assignment in mission.assignments] == [0, 1, 2]
-    assert [assignment.drone_id.value for assignment in mission.assignments] == [
-        "drone-01",
-        "drone-02",
-        "drone-03",
-    ]
+    assert [assignment.lane_index for assignment in mission.assignments] == list(
+        range(drone_count)
+    )
+    assert tuple(assignment.drone_id.value for assignment in mission.assignments) == (
+        drone_ids
+    )
+
+
+@pytest.mark.parametrize("drone_ids", [(), ("d1", "d2", "d3", "d4")])
+def test_survey_mission_rejects_drone_count_outside_supported_range(
+    drone_ids: tuple[str, ...],
+) -> None:
+    with pytest.raises(DomainValidationError, match="requires 1 to 3 drones") as error:
+        SurveyMission.create("mission-001", "D1", drone_ids)
+
+    assert error.value.context["count"] == len(drone_ids)
+
+
+def test_survey_mission_rejects_non_contiguous_lanes() -> None:
+    with pytest.raises(DomainValidationError, match="lane indices must be 0..1"):
+        SurveyMission(
+            mission_id=MissionId("mission-001"),
+            name="D1",
+            assignments=(
+                DroneAssignment(DroneId("drone-01"), 0),
+                DroneAssignment(DroneId("drone-02"), 2),
+            ),
+            flight_profile=FlightProfile(),
+            created_at=datetime.now(timezone.utc),
+        )
 
 
 def test_survey_mission_rejects_duplicate_drone_ids() -> None:

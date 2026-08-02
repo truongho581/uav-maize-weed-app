@@ -13,8 +13,12 @@ from uav_crop_analysis.application import (
     CreateSurveyMissionCommand,
 )
 from uav_crop_analysis.bootstrap import ApplicationRuntime, build_runtime
-from uav_crop_analysis.domain import FlightProfile, MissionId
-from uav_crop_analysis.errors import JobNotFoundError, MissionNotFoundError
+from uav_crop_analysis.domain import FlightProfile, GeoPoint, MissionId
+from uav_crop_analysis.errors import (
+    JobNotFoundError,
+    MissionNotFoundError,
+    MissionPlanningError,
+)
 from uav_crop_analysis.jobs import AnalysisJob
 from uav_crop_analysis.integrations import (
     QGroundControlLogReader,
@@ -23,6 +27,13 @@ from uav_crop_analysis.integrations import (
     TelemetryLogImport,
 )
 from uav_crop_analysis.reporting import MissionReport, ReportExport
+from uav_crop_analysis.planning import (
+    MissionPlanExport,
+    MissionPlanningProfile,
+    MissionPlanningRequest,
+    PlannedMission,
+    SurveyArea,
+)
 from uav_crop_analysis.sdk.models import (
     API_VERSION,
     SDK_SCHEMA_VERSION,
@@ -32,6 +43,11 @@ from uav_crop_analysis.sdk.models import (
     ImportMissionView,
     JobView,
     MissionView,
+    MissionPlanView,
+    PlanMissionRequest,
+    PlannedRouteView,
+    PlannedWaypointView,
+    PlanningWarningView,
     SpatialResultView,
     SubmitAnalysisRequest,
 )
@@ -53,13 +69,15 @@ class UavCropAnalysis:
         database_path: str | Path | None = None,
         *,
         registry_path: str | Path | None = None,
-        nodeodm_url: str | None = None,
+        mission_plan_path: str | Path | None = None,
+        nodeodm_image: str | None = None,
     ) -> UavCropAnalysis:
         return cls(
             build_runtime(
                 database_path,
                 registry_path=registry_path,
-                nodeodm_url=nodeodm_url,
+                mission_plan_path=mission_plan_path,
+                nodeodm_image=nodeodm_image,
             ),
             owns_runtime=True,
         )
@@ -86,11 +104,19 @@ class UavCropAnalysis:
             geospatial_results=True,
             qgroundcontrol_plan_import=True,
             qgroundcontrol_log_import=True,
+            mission_planning=True,
+            mission_plan_export=True,
+            qgroundcontrol_plan_export=True,
             mavsdk_available=mavsdk_available,
             drone_telemetry_read=mavsdk_available,
             drone_mission_read=mavsdk_available,
             drone_commands_enabled=False,
-            nodeodm_configured=self.runtime.spatial_workspace.nodeodm_configured,
+            orthomosaic_engine_configured=(
+                self.runtime.spatial_workspace.orthomosaic_engine_configured
+            ),
+            orthomosaic_engine_name=(
+                self.runtime.spatial_workspace.orthomosaic_engine_name
+            ),
         )
 
     def create_mission(self, request: CreateMissionRequest) -> MissionView:
@@ -191,6 +217,81 @@ class UavCropAnalysis:
             for item in self.runtime.spatial_products.list_for_mission(mission_id)
         )
 
+    def plan_mission(self, request: PlanMissionRequest) -> MissionPlanView:
+        mission = self.runtime.missions.get(MissionId(request.mission_id))
+        if mission is None:
+            raise MissionNotFoundError(
+                f"mission does not exist: {request.mission_id}"
+            )
+        camera = next(
+            (
+                profile
+                for profile in self.runtime.missions.list_saved_camera_profiles()
+                if profile.profile_id == request.camera_profile_id
+            ),
+            None,
+        )
+        if camera is None:
+            raise MissionPlanningError(
+                f"saved camera profile does not exist: {request.camera_profile_id}",
+                context={"camera_profile_id": request.camera_profile_id},
+            )
+        assignments = tuple(sorted(mission.assignments, key=lambda item: item.lane_index))
+        drone_ids = tuple(item.drone_id.value for item in assignments)
+        homes = tuple(
+            None if item is None else GeoPoint(item[0], item[1])
+            for item in request.homes_wgs84
+        )
+        flight_profile = mission.flight_profile
+        plan = self.runtime.mission_planning.plan(
+            MissionPlanningRequest(
+                mission_id=request.mission_id,
+                survey_area=SurveyArea(
+                    tuple(GeoPoint(item[0], item[1]) for item in request.polygon_wgs84),
+                    request.projected_crs,
+                ),
+                profile=MissionPlanningProfile(
+                    drone_count=len(drone_ids),
+                    altitude_agl_m=(
+                        request.altitude_agl_m
+                        if request.altitude_agl_m is not None
+                        else flight_profile.altitude_m
+                    ),
+                    gimbal_pitch_deg=request.gimbal_pitch_deg,
+                    forward_overlap=(
+                        request.forward_overlap
+                        if request.forward_overlap is not None
+                        else flight_profile.forward_overlap
+                    ),
+                    side_overlap=(
+                        request.side_overlap
+                        if request.side_overlap is not None
+                        else flight_profile.side_overlap
+                    ),
+                    flight_speed_mps=request.flight_speed_mps,
+                    capture_pause_seconds=request.capture_pause_seconds,
+                    sweep_heading_deg=request.sweep_heading_deg,
+                    minimum_route_separation_m=request.minimum_route_separation_m,
+                ),
+                camera=camera,
+                drone_ids=drone_ids,
+                homes=homes,
+                image_size_px=request.image_size_px,
+            )
+        )
+        return _plan_view(plan)
+
+    def list_mission_plans(self) -> tuple[MissionPlanView, ...]:
+        return tuple(_plan_view(plan) for plan in self.runtime.mission_planning.list())
+
+    def get_mission_plan(self, mission_id: str) -> MissionPlanView:
+        return _plan_view(self.runtime.mission_planning.get(mission_id))
+
+    def export_mission_plan(
+        self, mission_id: str, output_root: str | Path
+    ) -> MissionPlanExport:
+        return self.runtime.mission_planning.export(mission_id, output_root)
+
     def inspect_qgc_plan(self, source_path: str | Path) -> QgcPlan:
         return QGroundControlPlanReader().read(source_path)
 
@@ -254,4 +355,63 @@ def _job_view(job: AnalysisJob) -> JobView:
         error_message=job.error.message if job.error else None,
         artifact_dir=job.result.artifact_dir if job.result else None,
         result_manifest_sha256=job.result.manifest_sha256 if job.result else None,
+    )
+
+
+def _plan_view(plan: PlannedMission) -> MissionPlanView:
+    footprint = plan.camera_footprint
+    return MissionPlanView(
+        mission_id=plan.mission_id,
+        generator_version=plan.generator_version,
+        projected_crs=plan.survey_area.projected_crs,
+        polygon_wgs84=tuple(
+            (point.latitude, point.longitude)
+            for point in plan.survey_area.polygon_wgs84
+        ),
+        camera_profile_id=plan.camera_profile_id,
+        camera_profile_sha256=plan.camera_profile_sha256,
+        altitude_agl_m=plan.profile.altitude_agl_m,
+        forward_overlap=plan.profile.forward_overlap,
+        side_overlap=plan.profile.side_overlap,
+        flight_speed_mps=plan.profile.flight_speed_mps,
+        capture_pause_seconds=plan.profile.capture_pause_seconds,
+        effective_sweep_heading_deg=plan.effective_sweep_heading_deg,
+        ground_footprint_m=(footprint.ground_width_m, footprint.ground_height_m),
+        gsd_cm_px=(footprint.gsd_x_cm_px, footprint.gsd_y_cm_px),
+        lane_spacing_m=footprint.lane_spacing_m,
+        capture_spacing_m=footprint.capture_spacing_m,
+        area_m2=plan.area_m2,
+        coverage_ratio=plan.coverage_ratio,
+        capture_count=plan.capture_count,
+        export_ready=plan.export_ready,
+        routes=tuple(
+            PlannedRouteView(
+                drone_id=route.drone_id,
+                home_wgs84=(
+                    None
+                    if route.home is None
+                    else (route.home.latitude, route.home.longitude)
+                ),
+                lane_indices=route.lane_indices,
+                waypoints=tuple(
+                    PlannedWaypointView(
+                        sequence=waypoint.sequence,
+                        latitude=waypoint.position.latitude,
+                        longitude=waypoint.position.longitude,
+                        altitude_agl_m=waypoint.altitude_agl_m,
+                        hold_seconds=waypoint.hold_seconds,
+                        lane_index=waypoint.lane_index,
+                        action=waypoint.action.value,
+                    )
+                    for waypoint in route.waypoints
+                ),
+                estimated_distance_m=route.estimated_distance_m,
+                estimated_duration_seconds=route.estimated_duration_seconds,
+            )
+            for route in plan.routes
+        ),
+        warnings=tuple(
+            PlanningWarningView(warning.code, warning.message, warning.drone_id)
+            for warning in plan.warnings
+        ),
     )

@@ -49,7 +49,7 @@ class _StaticOnnxSession:
 
 def _resolved(runtime: RuntimeKind, artifact_format: str) -> ResolvedModel:
     manifest = ModelRegistry.from_file(PROJECT_ROOT / "models/model_inventory.json").get(
-        "attention-unet-v72-loso"
+        "segformer-b0-v72-maizemask-weedsgalore"
     )
     manifest = replace(manifest, input_size_hw=(2, 2), runtime=runtime)
     artifact = ModelArtifact("unit", "unit.bin", "a" * 64, artifact_format)
@@ -88,7 +88,8 @@ def test_torch_adapter_returns_source_coordinate_schema() -> None:
 
     assert prediction.class_map.shape == (3, 4)
     assert prediction.probabilities.shape == (3, 3, 4)
-    assert set(prediction.target_masks) == {"weed"}
+    assert set(prediction.target_masks) == {"crop", "weed"}
+    assert prediction.target_masks["crop"].dtype == np.bool_
     assert prediction.target_masks["weed"].dtype == np.bool_
     np.testing.assert_allclose(prediction.probabilities.sum(axis=0), 1.0, atol=1e-6)
 

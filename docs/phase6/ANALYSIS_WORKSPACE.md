@@ -23,12 +23,13 @@ pack ngoài bundle bằng:
 UAV_CROP_MODEL_REGISTRY=/absolute/path/to/model_inventory.json
 ```
 
-Checkpoint được kiểm tra tồn tại và SHA-256 trước khi job chạy. Registry LOSO hiện phục
-vụ đánh giá; chưa tự động công bố model deployment mặc định.
+Checkpoint được kiểm tra tồn tại và SHA-256 trước khi job chạy. Registry mặc định chỉ
+công bố SegFormer-B0 joint MaizeMask + WeedsGalore cho semantic production.
 
 ## Result viewer
 
-Viewer đọc artifact đã publish của job `completed` và có bốn layer ổn định:
+Viewer đọc artifact đã publish của job `completed` và có các layer semantic ngô - cỏ,
+mặt nạ cỏ dại, xác suất cỏ dại và ảnh chồng lớp.
 
 - `Gốc`: ảnh RGB đầu vào.
 - `Weed mask`: mask semantic nhị phân màu đỏ.

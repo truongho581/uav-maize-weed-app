@@ -1,17 +1,20 @@
-# UAV Crop Analysis
+# GreenEye
 
-Ứng dụng desktop và module Python để quản lý dữ liệu khảo sát nông nghiệp từ tổ hợp ba
-drone, chạy phân tích AI và xuất sản phẩm không gian.
+GreenEye là ứng dụng desktop và module Python để quản lý dữ liệu khảo sát nông nghiệp từ
+một đến ba drone, chạy phân tích AI và xuất sản phẩm không gian.
 
 ## Phạm vi hiện tại
 
-- Mission đúng ba drone, ba làn song song, gimbal nadir và đứng yên chụp.
+- Mission hỗ trợ từ một đến ba drone; kịch bản nghiệm thu chính dùng ba làn song song,
+  gimbal nadir và đứng yên chụp.
 - Import ảnh/EXIF/telemetry, kiểm tra GPS, độ cao, timestamp và thứ tự.
-- Weed semantic bằng Attention U-Net, DeepLabV3+ hoặc SegFormer đã đăng ký.
-- Maize instance có contract riêng; checkpoint YOLOv8/Mask R-CNN được bổ sung sau.
-- Preview ba làn không georeference; orthomosaic GeoTIFF qua import hoặc NodeODM.
+- Semantic mặc định dùng SegFormer-B0 `v7.2-maizemask-weedsgalore-seed42`, phân vùng đồng thời ngô và cỏ dại; cỏ dại vẫn là mục tiêu nghiệp vụ chính.
+- Maize instance dùng YOLOv8-seg `v7.2-fixed-seed42`, xuất mask, khung bao và số cây theo `maize2/maize4/maize6` để đếm cây và nhận biết cây còi nhỏ.
+- Kiểm tra nhanh checkpoint bằng ảnh đơn hoặc tối đa 12 khung đại diện từ video, không cần tạo mission.
+- Preview ba làn không georeference; orthomosaic GeoTIFF qua import hoặc NodeODM cục bộ.
 - Weed heatmap GeoTIFF/GeoJSON/PNG có CRS, transform và provenance.
-- Dashboard báo cáo ba drone; xuất JSON/CSV/HTML tự chứa kèm checksum manifest.
+- Dashboard báo cáo theo số drone thực tế; xuất JSON/CSV/HTML, ảnh ghép và heatmap
+  GeoTIFF kèm checksum manifest.
 - SDK Python, CLI và REST `/api/v1` cho phần mềm điều khiển bên ngoài.
 - Đọc QGroundControl plan/log và MAVSDK telemetry/mission ở chế độ read-only.
 
@@ -22,11 +25,18 @@ python -m pip install -e .
 uav-crop-analysis
 ```
 
-NodeODM là dịch vụ tùy chọn bên ngoài:
+Để tự tạo orthomosaic, người dùng chỉ cần cài Docker Desktop. Ứng dụng tự kiểm tra và
+mở Docker Desktop khi cần, tải image chính thức ở lần đầu, khởi động NodeODM và gửi ảnh bằng PyODM.
+Không cần clone source, build image, chạy container hay nhập URL thủ công.
 
 ```bash
-UAV_CROP_NODEODM_URL=http://localhost:3000 uav-crop-analysis
+uav-crop-analysis
 ```
+
+Tại `Không gian`, nút `Chạy NodeODM` quản lý container `uav-crop-nodeodm` trên
+`127.0.0.1:3000`, hiển thị tiến trình upload/xử lý/download và tự mở orthophoto
+GeoTIFF trong viewer. Lần đầu cần mạng để Docker tải `opendronemap/nodeodm`; các lần
+sau có thể chạy offline khi image đã có trên máy.
 
 ## SDK, CLI và API
 
@@ -51,12 +61,10 @@ python -m pip install -e '.[drone]'
 
 ## Tài liệu
 
+- [Mục lục tài liệu](docs/README.md)
+- [Hướng dẫn sử dụng](docs/HUONG_DAN_SU_DUNG.md)
 - [Yêu cầu phần mềm](docs/requirements/YEU_CAU_PHAN_MEM.md)
-- [Kế hoạch tái cấu trúc](docs/roadmap/KE_HOACH_TAI_CAU_TRUC.md)
-- [Phân tích hiện trạng](docs/analysis/Phan_tich_UAV_CropAnalysis.txt)
-- [Quy ước tổ chức repository](docs/ROOT_LAYOUT.md)
-- [Geospatial contract](docs/phase7/GEOSPATIAL_CONTRACT.md)
-- [SDK/API contract](docs/phase9/SDK_API_CONTRACT.md)
+- [Contract xuất nhiệm vụ](docs/phase9_5/GREENEYE_MISSION_EXPORT_CONTRACT.md)
 
 ## Cấu trúc thư mục
 

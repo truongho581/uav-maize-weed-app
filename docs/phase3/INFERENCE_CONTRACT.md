@@ -32,8 +32,10 @@ giúp semantic model phân biệt thực vật, **không dùng để đếm ho�
 - bounding box theo `xyxy` pixel coordinates;
 - mask bool đúng kích thước ảnh nguồn.
 
-Weed bị cấm trong class map instance. Adapter YOLOv8/Mask R-CNN chỉ được kích hoạt
-sau khi checkpoint và preprocessing thật được bổ sung vào registry.
+Weed bị cấm trong class map instance. Worker YOLOv8-seg xác minh checksum và class
+order của checkpoint trước khi chạy, xử lý ảnh drone theo tile chồng lấp rồi NMS mask
+theo IoU để tránh đếm lặp ở mép tile. Mask R-CNN chỉ được kích hoạt sau khi có
+checkpoint thật.
 
 ## Runtime behavior
 

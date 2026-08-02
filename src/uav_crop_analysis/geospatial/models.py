@@ -89,7 +89,9 @@ class SpatialWorkspace:
     geotagged_image_count: int
     altitude_image_count: int
     products: tuple[SpatialProduct, ...]
-    nodeodm_configured: bool
+    orthomosaic_engine_configured: bool
+    orthomosaic_engine_name: str = "NodeODM (Docker local)"
+    orthomosaic_engine_location: str | None = None
 
     @property
     def geospatial_ready(self) -> bool:

@@ -13,7 +13,15 @@ from uav_crop_analysis.application.import_models import (
     TelemetryCsvMapping,
     TimestampFormat,
 )
-from uav_crop_analysis.domain import CameraProfile, CaptureMode, DroneId, FlightProfile, SurveyMission
+from uav_crop_analysis.domain import (
+    MAX_DRONE_COUNT,
+    MIN_DRONE_COUNT,
+    CameraProfile,
+    CaptureMode,
+    DroneId,
+    FlightProfile,
+    SurveyMission,
+)
 from uav_crop_analysis.errors import ImportDataError
 
 
@@ -32,7 +40,7 @@ def write_mission_manifest(request: MissionImportRequest, output_path: Path) -> 
     source_ids = {source.drone_id.value for source in request.sources}
     if source_ids != set(lane_by_drone):
         raise ImportDataError(
-            "manifest sources must match the three assigned mission drones",
+            "manifest sources must match the assigned mission drones",
             context={"source_ids": sorted(source_ids)},
         )
     payload = {
@@ -70,13 +78,25 @@ def load_mission_manifest(manifest_path: Path) -> MissionImportRequest:
         mission_data = payload["mission"]
         profile_data = mission_data["flight_profile"]
         drone_rows = payload["drones"]
-        drone_ids = tuple(row["drone_id"] for row in sorted(drone_rows, key=lambda row: row["lane_index"]))
-        if len(drone_ids) != 3:
-            raise ImportDataError("mission manifest must define exactly three drones")
+        if not isinstance(drone_rows, list):
+            raise ImportDataError("mission manifest drones must be a list")
+        drone_count = len(drone_rows)
+        if not MIN_DRONE_COUNT <= drone_count <= MAX_DRONE_COUNT:
+            raise ImportDataError(
+                f"mission manifest must define {MIN_DRONE_COUNT} to "
+                f"{MAX_DRONE_COUNT} drones"
+            )
+        sorted_rows = sorted(drone_rows, key=lambda row: row["lane_index"])
+        lane_indices = [row["lane_index"] for row in sorted_rows]
+        if lane_indices != list(range(drone_count)):
+            raise ImportDataError(
+                f"mission manifest lane indices must be 0..{drone_count - 1}"
+            )
+        drone_ids = tuple(row["drone_id"] for row in sorted_rows)
         mission = SurveyMission.create(
             mission_id=mission_data["mission_id"],
             name=mission_data["name"],
-            drone_ids=(drone_ids[0], drone_ids[1], drone_ids[2]),
+            drone_ids=drone_ids,
             flight_profile=FlightProfile(
                 altitude_m=profile_data["altitude_m"],
                 gimbal_pitch_deg=profile_data["gimbal_pitch_deg"],

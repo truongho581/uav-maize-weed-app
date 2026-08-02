@@ -1,0 +1,129 @@
+{
+  "audit_version": 1,
+  "scenarios": [
+    {
+      "drone_count": 1,
+      "area_m2": 4000.0,
+      "coverage_ratio": 1.0,
+      "heading_deg": 90.0,
+      "capture_count": 168,
+      "lane_spacing_m": 6.085007,
+      "capture_spacing_m": 3.004303,
+      "routes": [
+        {
+          "drone_id": "drone-1",
+          "lanes": [0, 1, 2, 3, 4, 5, 6],
+          "capture_count": 168,
+          "distance_m": 508.494,
+          "duration_s": 337.498
+        }
+      ],
+      "qgroundcontrol": [
+        {
+          "file": "drone-01.plan",
+          "waypoint_count": 168,
+          "commands": [16, 206]
+        }
+      ],
+      "checksum_count": 3
+    },
+    {
+      "drone_count": 2,
+      "area_m2": 4000.0,
+      "coverage_ratio": 1.0,
+      "heading_deg": 90.0,
+      "capture_count": 168,
+      "lane_spacing_m": 6.085007,
+      "capture_spacing_m": 3.004303,
+      "routes": [
+        {
+          "drone_id": "drone-1",
+          "lanes": [0, 1, 2, 3],
+          "capture_count": 96,
+          "distance_m": 288.238,
+          "duration_s": 192.079
+        },
+        {
+          "drone_id": "drone-2",
+          "lanes": [4, 5, 6],
+          "capture_count": 72,
+          "distance_m": 214.82,
+          "duration_s": 143.607
+        }
+      ],
+      "qgroundcontrol": [
+        {
+          "file": "drone-01.plan",
+          "waypoint_count": 96,
+          "commands": [16, 206]
+        },
+        {
+          "file": "drone-02.plan",
+          "waypoint_count": 72,
+          "commands": [16, 206]
+        }
+      ],
+      "checksum_count": 5
+    },
+    {
+      "drone_count": 3,
+      "area_m2": 4000.0,
+      "coverage_ratio": 1.0,
+      "heading_deg": 90.0,
+      "capture_count": 168,
+      "lane_spacing_m": 6.085007,
+      "capture_spacing_m": 3.004303,
+      "routes": [
+        {
+          "drone_id": "drone-1",
+          "lanes": [0, 1, 2],
+          "capture_count": 72,
+          "distance_m": 214.82,
+          "duration_s": 143.607
+        },
+        {
+          "drone_id": "drone-2",
+          "lanes": [3, 4],
+          "capture_count": 48,
+          "distance_m": 141.401,
+          "duration_s": 95.134
+        },
+        {
+          "drone_id": "drone-3",
+          "lanes": [5, 6],
+          "capture_count": 48,
+          "distance_m": 141.401,
+          "duration_s": 95.134
+        }
+      ],
+      "qgroundcontrol": [
+        {
+          "file": "drone-01.plan",
+          "waypoint_count": 72,
+          "commands": [16, 206]
+        },
+        {
+          "file": "drone-02.plan",
+          "waypoint_count": 48,
+          "commands": [16, 206]
+        },
+        {
+          "file": "drone-03.plan",
+          "waypoint_count": 48,
+          "commands": [16, 206]
+        }
+      ],
+      "checksum_count": 7
+    }
+  ],
+  "safety": {
+    "drone_commands_enabled": false,
+    "forbidden_sdk_methods": [
+      "arm",
+      "takeoff",
+      "upload_mission",
+      "start_mission"
+    ],
+    "exposed_forbidden_methods": []
+  }
+}

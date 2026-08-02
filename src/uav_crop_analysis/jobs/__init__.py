@@ -16,7 +16,7 @@ from .models import (
 from .repository import AnalysisJobRepository
 
 if TYPE_CHECKING:
-    from .pipeline import SemanticTilePipeline
+    from .pipeline import InstanceTilePipeline, SemanticTilePipeline
     from .service import AnalysisJobService
     from .worker import ProcessAnalysisWorker
 
@@ -32,6 +32,7 @@ __all__ = [
     "JobEventType",
     "JobStage",
     "JobStatus",
+    "InstanceTilePipeline",
     "ProcessAnalysisWorker",
     "SemanticTilePipeline",
 ]
@@ -50,4 +51,8 @@ def __getattr__(name: str) -> Any:
         from .pipeline import SemanticTilePipeline
 
         return SemanticTilePipeline
+    if name == "InstanceTilePipeline":
+        from .pipeline import InstanceTilePipeline
+
+        return InstanceTilePipeline
     raise AttributeError(name)

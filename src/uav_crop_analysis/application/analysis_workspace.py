@@ -9,7 +9,7 @@ from typing import Protocol
 
 from uav_crop_analysis.application.ports import MissionDataRepository
 from uav_crop_analysis.domain import MissionId
-from uav_crop_analysis.errors import JobStateError, ModelUnavailableError
+from uav_crop_analysis.errors import JobStateError
 from uav_crop_analysis.jobs.models import (
     AnalysisInput,
     AnalysisJob,
@@ -29,6 +29,8 @@ class AnalysisJobController(Protocol):
     def poll(self, job_id: str) -> AnalysisJob: ...
 
     def cancel(self, job_id: str) -> AnalysisJob: ...
+
+    def delete(self, job_id: str) -> None: ...
 
     def retry(self, job_id: str, *, force: bool = False, start: bool = True) -> AnalysisJob: ...
 
@@ -148,12 +150,7 @@ class AnalysisWorkspaceService:
         mission = self._missions.get(MissionId(request.mission_id))
         if mission is None:
             raise JobStateError(f"mission does not exist: {request.mission_id}")
-        model = self._catalog.get(request.model_id)
-        if model.task is not AnalysisTask.SEMANTIC:
-            raise ModelUnavailableError(
-                "instance analysis worker is unavailable until a checkpoint is registered",
-                context={"model_id": request.model_id},
-            )
+        self._catalog.get(request.model_id)
         self._catalog.ensure_artifact(request.model_id, request.artifact_role)
         if not inputs:
             raise JobStateError("mission has no images to analyze")
@@ -188,6 +185,9 @@ class AnalysisWorkspaceService:
 
     def cancel(self, job_id: str) -> AnalysisJob:
         return self._jobs.cancel(job_id)
+
+    def delete(self, job_id: str) -> None:
+        self._jobs.delete(job_id)
 
     def retry(self, job_id: str) -> AnalysisJob:
         return self._jobs.retry(job_id)

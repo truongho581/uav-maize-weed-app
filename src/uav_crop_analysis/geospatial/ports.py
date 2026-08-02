@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -14,6 +15,17 @@ from uav_crop_analysis.geospatial.models import GeoRasterMetadata, SpatialProduc
 
 
 ProgressCallback = Callable[[float, str], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ImageReference:
+    """Photo position supplied by EXIF or mission telemetry."""
+
+    path: Path
+    longitude: float
+    latitude: float
+    altitude_m: float | None = None
+    gsd_cm_per_px: float | None = None
 
 
 class SpatialProductRepository(Protocol):
@@ -65,6 +77,7 @@ class OrthomosaicEngine(Protocol):
         image_paths: tuple[Path, ...],
         output_dir: Path,
         *,
+        image_references: tuple[ImageReference, ...] = (),
         progress: ProgressCallback | None = None,
     ) -> tuple[Path, dict[str, object]]: ...
 

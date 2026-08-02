@@ -53,12 +53,12 @@ class _Catalog:
     def get(self, model_id: str) -> AnalysisModelOption:
         return AnalysisModelOption(
             model_id=model_id,
-            version="7.2-loso",
+            version="7.2-maizemask-weedsgalore-seed42",
             family="segformer_b0",
             task=AnalysisTask.SEMANTIC,
             status="deployment_ready",
             runtime="pytorch",
-            target_classes=("weed",),
+            target_classes=("crop", "weed"),
             artifacts=(ModelArtifactOption("best", Path("model.pth"), True),),
         )
 
@@ -143,6 +143,16 @@ def _report_service(tmp_path: Path) -> tuple[MissionReportService, str]:
             "width": asset.width_px,
             "height": asset.height_px,
             "weed_coverage_percent": float(10 + index),
+            "class_coverage_percent": {
+                "background": 60.0 - index,
+                "crop": 30.0,
+                "weed": float(10 + index),
+            },
+            "class_pixels": {
+                "background": 7200 - index * 120,
+                "crop": 3600,
+                "weed": 1200 + index * 120,
+            },
             "tile_count": 2,
         }
         for index, asset in enumerate(assets)
@@ -156,6 +166,30 @@ def _report_service(tmp_path: Path) -> tuple[MissionReportService, str]:
     completed = AnalysisJob("job-report", config).start().complete(result)
     jobs.add(completed, completed.event(JobEventType.COMPLETED))
 
+    orthomosaic_preview = tmp_path / "ảnh ghép.png"
+    Image.new("RGB", (120, 80), (80, 110, 70)).save(orthomosaic_preview)
+    orthomosaic = tmp_path / "orthomosaic.tif"
+    orthomosaic.write_bytes(b"orthomosaic-geotiff-fixture")
+    products.add(
+        SpatialProduct(
+            product_id="orthomosaic-report",
+            mission_id=mission.mission_id.value,
+            kind=SpatialProductKind.ORTHOMOSAIC,
+            accuracy=SpatialAccuracy.GEOREFERENCED,
+            path=orthomosaic,
+            preview_path=orthomosaic_preview,
+            created_at=NOW,
+            raster=GeoRasterMetadata(
+                crs="EPSG:32648",
+                transform=(0.02, 0.0, 500000.0, 0.0, -0.02, 1200000.0),
+                width=120,
+                height=80,
+                bounds=(500000.0, 1199998.4, 500002.4, 1200000.0),
+                resolution=(0.02, 0.02),
+            ),
+            provenance={"engine": "nodeodm"},
+        )
+    )
     preview = tmp_path / "heatmap cỏ dại.png"
     Image.new("RGB", (120, 80), (45, 130, 70)).save(preview)
     heatmap = tmp_path / "weed probability.tif"
@@ -209,9 +243,10 @@ def test_report_contract_aggregates_mission_drone_ai_and_spatial_data(
     assert report.analyzed_image_count == 6
     assert report.issue_image_count == 3
     assert report.mean_weed_coverage_percent == pytest.approx(12.5)
+    assert report.mean_crop_coverage_percent == pytest.approx(30.0)
     assert report.cameras[0].estimated_gsd_cm_px == pytest.approx(expected_gsd)
     assert report.cameras[0].gsd_method == "altitude_horizontal_fov"
-    assert report.images[0].model_version == "7.2-loso"
+    assert report.images[0].model_version == "7.2-maizemask-weedsgalore-seed42"
     assert report.images[0].estimated_weed_area_m2 is not None
     assert report.images[0].maize_instance_count is None
     assert report.images[0].maize_status == "unavailable_instance_checkpoint"
@@ -221,7 +256,29 @@ def test_report_contract_aggregates_mission_drone_ai_and_spatial_data(
         item for item in report.images if item.image_id == "drone-03-001"
     ).quality_status == "warning"
     assert report.spatial_products[0].crs == "EPSG:32648"
-    assert any("Maize" in item for item in report.limitations)
+    assert any("cây ngô" in item.lower() for item in report.limitations)
+
+
+def test_report_supports_single_drone_mission(tmp_path: Path) -> None:
+    database = tmp_path / "single-drone.db"
+    missions = SQLiteMissionRepository(database)
+    mission = SurveyMission.create("mission-single", "Một drone", ("drone-01",))
+    missions.add(mission)
+    service = MissionReportService(
+        missions,
+        SQLiteAnalysisJobRepository(database),
+        SQLiteSpatialProductRepository(database),
+        _Catalog(),
+        PortableMissionReportExporter(),
+        now=lambda: NOW,
+    )
+
+    report = service.build(mission.mission_id.value)
+    exported = service.export(mission.mission_id.value, tmp_path / "reports")
+
+    assert report.drone_count == 1
+    assert [drone.drone_id for drone in report.drones] == ["drone-01"]
+    assert "1 drone" in exported.report_html.read_text(encoding="utf-8")
 
 
 def test_portable_export_is_versioned_unicode_safe_and_self_contained(
@@ -269,6 +326,7 @@ def test_portable_export_is_versioned_unicode_safe_and_self_contained(
     }
     assert payload["schema_version"] == 1
     assert payload["summary"]["analyzed_image_count"] == 6
+    assert payload["summary"]["mean_crop_coverage_percent"] == pytest.approx(30.0)
     with exported.image_csv.open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == 6
@@ -278,6 +336,10 @@ def test_portable_export_is_versioned_unicode_safe_and_self_contained(
     html = exported.report_html.read_text(encoding="utf-8")
     assert "Khảo sát ngô khu vực A" in html
     assert "data:image/png;base64," in html
+    assert "Ảnh ghép GeoTIFF" in html
+    assert "Heatmap cỏ dại" in html
+    assert (exported.directory / "maps" / "orthomosaic.tif").is_file()
+    assert (exported.directory / "maps" / "weed-heatmap.tif").is_file()
     assert "https://" not in html
     manifest = json.loads(exported.manifest_json.read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 1

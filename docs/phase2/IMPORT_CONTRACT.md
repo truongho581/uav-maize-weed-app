@@ -5,13 +5,13 @@
 Lõi nhập dữ liệu không tự suy đoán thư mục nào thuộc drone nào. Mỗi nguồn được
 khai báo bằng `DroneImportSource` gồm:
 
-- `drone_id` đã được gán vào một trong ba lane của mission.
+- `drone_id` đã được gán vào một lane của mission.
 - `image_dir` chứa ảnh của riêng drone đó.
 - `telemetry_file` tùy chọn.
 - `telemetry_mapping` ánh xạ tên cột và định dạng timestamp.
 - `camera_profile` tùy chọn.
 
-Khi có cấu trúc dữ liệu thực tế, chỉ cần thêm adapter chuyển cấu trúc đó thành ba
+Khi có cấu trúc dữ liệu thực tế, chỉ cần thêm adapter chuyển cấu trúc đó thành 1-3
 `DroneImportSource`. SQLite schema và import service không phải thay đổi.
 
 ## Mission manifest
@@ -23,7 +23,7 @@ Manifest lưu:
 
 - Mission ID, tên, thời điểm tạo có timezone.
 - Độ cao, góc gimbal, forward/side overlap và capture mode.
-- Ba drone, lane `0..2`, đường dẫn ảnh và telemetry.
+- Từ một đến ba drone, lane liên tục `0..n-1`, đường dẫn ảnh và telemetry.
 - Mapping cột telemetry và camera profile.
 - Ngưỡng lệch timestamp tối đa, mặc định 2 giây.
 

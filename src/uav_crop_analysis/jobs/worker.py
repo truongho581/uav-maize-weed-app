@@ -1,4 +1,4 @@
-"""Spawn-based worker process for semantic analysis jobs."""
+"""Spawn-based worker process for semantic and maize instance analysis jobs."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from uav_crop_analysis.errors import (
     PipelineCancelledError,
     UAVCropAnalysisError,
 )
-from uav_crop_analysis.inference import ModelRegistry, SegmenterFactory
+from uav_crop_analysis.inference import ModelRegistry, ModelTask, SegmenterFactory
 from uav_crop_analysis.jobs.models import AnalysisJob, AnalysisResult, JobStage
-from uav_crop_analysis.jobs.pipeline import SemanticTilePipeline
+from uav_crop_analysis.jobs.pipeline import InstanceTilePipeline, SemanticTilePipeline
 
 
 class WorkerMessageType(str, Enum):
@@ -89,7 +89,7 @@ class ProcessAnalysisWorker:
         message_queue = self._context.Queue()
         cancel_event = self._context.Event()
         process = self._context.Process(
-            target=_semantic_worker_entry,
+            target=_analysis_worker_entry,
             args=(job, message_queue, cancel_event),
             name=f"uav-analysis-{job.job_id}",
             daemon=True,
@@ -98,15 +98,30 @@ class ProcessAnalysisWorker:
         return ProcessWorkerHandle(process, message_queue, cancel_event)
 
 
-def _semantic_worker_entry(job: AnalysisJob, message_queue: Any, cancel_event: Any) -> None:
+def _analysis_worker_entry(job: AnalysisJob, message_queue: Any, cancel_event: Any) -> None:
     try:
         registry = ModelRegistry.from_file(job.config.registry_path)
-        segmenter = SegmenterFactory(registry).load_semantic(
-            job.config.model_id,
-            job.config.artifact_role,
-            device=job.config.device,
-        )
-        pipeline = SemanticTilePipeline(segmenter)
+        manifest = registry.get(job.config.model_id)
+        factory = SegmenterFactory(registry)
+        pipeline: SemanticTilePipeline | InstanceTilePipeline
+        if manifest.task is ModelTask.SEMANTIC:
+            pipeline = SemanticTilePipeline(
+                factory.load_semantic(
+                    job.config.model_id,
+                    job.config.artifact_role,
+                    device=job.config.device,
+                )
+            )
+        elif manifest.task is ModelTask.MAIZE_INSTANCE:
+            pipeline = InstanceTilePipeline(
+                factory.load_instance(
+                    job.config.model_id,
+                    job.config.artifact_role,
+                    device=job.config.device,
+                )
+            )
+        else:
+            raise ValueError(f"unsupported analysis task: {manifest.task.value}")
 
         def emit(stage: JobStage, progress: float, detail: str) -> None:
             message_queue.put(

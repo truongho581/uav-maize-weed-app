@@ -14,9 +14,10 @@ reviewed again before distributing binaries outside the research team.
 | Vendored DeepLabV3+ code | Packaged checkpoint-compatible architecture | MIT attribution in source | Retain upstream header and license notice before distribution |
 | OpenCV | Image processing | Apache-2.0 | Keep; retain notices |
 | NumPy/Pandas/Pillow | Core data/image processing | Permissive licenses with notices | Keep |
-| ODM/NodeODM | Optional orthomosaic backend | AGPL-3.0 and large native dependency surface | External adapter/service; do not bundle in the first desktop binary |
+| ODM/NodeODM | Optional orthomosaic backend | AGPL-3.0 and large native dependency surface | Pull official container at runtime; do not bundle or modify the image |
 | MAVSDK | Optional telemetry/mission adapter | BSD-3-Clause | Keep optional |
 | PyInstaller | Packaging | GPL with bootloader exception; review bundled dependency licenses | Keep for initial native builds |
+| Lucide Icons 1.27.0 | Bundled SVG icons for the desktop UI | ISC; selected SVG files and license text redistributed | Keep license at `src/uav_crop_analysis/resources/icons/LUCIDE_LICENSE.txt` |
 
 ## Open decisions
 

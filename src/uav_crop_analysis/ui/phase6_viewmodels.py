@@ -14,6 +14,7 @@ from uav_crop_analysis.application.data_workspace import (
     MissionDataWorkspace,
     MissionDataWorkspaceService,
 )
+from uav_crop_analysis.domain import CameraProfile
 from uav_crop_analysis.jobs.models import AnalysisJob
 
 
@@ -45,6 +46,26 @@ class DataWorkspaceViewModel:
             )
             return self.state
         self.state = DataWorkspaceState(mission_id=mission_id, data=data)
+        return self.state
+
+    def save_camera_profile(
+        self,
+        profile: CameraProfile,
+        drone_ids: tuple[str, ...],
+    ) -> DataWorkspaceState:
+        if self.state.mission_id is None:
+            return self.state
+        try:
+            data = self._service.save_camera_profile(
+                self.state.mission_id, profile, drone_ids
+            )
+        except Exception as exc:
+            self.state = DataWorkspaceState(
+                mission_id=self.state.mission_id,
+                error_message=str(exc) or type(exc).__name__,
+            )
+            return self.state
+        self.state = DataWorkspaceState(mission_id=self.state.mission_id, data=data)
         return self.state
 
 
@@ -109,6 +130,13 @@ class AnalysisWorkspaceViewModel:
     def retry(self, job_id: str) -> AnalysisWorkspaceState:
         try:
             self._service.retry(job_id)
+        except Exception as exc:
+            return self._with_error(str(exc) or type(exc).__name__)
+        return self.refresh()
+
+    def delete(self, job_id: str) -> AnalysisWorkspaceState:
+        try:
+            self._service.delete(job_id)
         except Exception as exc:
             return self._with_error(str(exc) or type(exc).__name__)
         return self.refresh()

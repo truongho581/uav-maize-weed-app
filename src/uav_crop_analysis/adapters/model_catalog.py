@@ -36,6 +36,7 @@ class RegistryModelCatalog:
                 options,
                 key=lambda item: (
                     not item.available,
+                    not item.status.startswith("production_default"),
                     "winner" not in item.status,
                     item.model_id,
                 ),

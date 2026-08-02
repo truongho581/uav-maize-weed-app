@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "experiment": "external_joint_training_for_app",
+  "task": {
+    "type": "semantic_segmentation",
+    "mode": "s3",
+    "class_names": [
+      "background",
+      "crop",
+      "weed"
+    ],
+    "category_to_mask": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 2
+    }
+  },
+  "model": {
+    "name": "segformer_b0",
+    "pretrained_backbone": false,
+    "trainable_parameters": 3714915
+  },
+  "data": {
+    "maizemask_root": "/workspace/runpod_bundle/src_data/maize_mask_7.2.coco_standard_split_spatial_guard",
+    "weedsgalore_root": "/workspace/runpod_bundle/weedsgalore/dataset",
+    "img_size": 640,
+    "maizemask_train_images": 233,
+    "weedsgalore_train_images": 104,
+    "maizemask_valid_images": 48,
+    "maizemask_test_images": 50,
+    "weedsgalore_mapping": {
+      "0": "background",
+      "1": "maize crop",
+      "2_to_5": "weed"
+    },
+    "weedsgalore_input": "official R/G/B 16-bit bands scaled by 65535"
+  },
+  "training": {
+    "epochs": 50,
+    "batch_size": 2,
+    "optimizer": "AdamW",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0,
+    "scheduler": "cosine",
+    "seed": 42,
+    "deterministic": true
+  },
+  "augmentation": {
+    "profile": "basic",
+    "train_only": true
+  },
+  "checkpoint_selection": {
+    "primary": "MaizeMask fixed valid target mIoU",
+    "definition": "mean(IoU_crop, IoU_weed)",
+    "tie_break": "valid target Dice",
+    "test_used_for_selection": false
+  },
+  "runtime": {
+    "python": "3.12.3",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.39",
+    "torch": "2.8.0+cu128",
+    "torchvision": "0.23.0+cu128",
+    "transformers": "5.14.1",
+    "ultralytics": null,
+    "cuda_runtime": "12.8",
+    "device": "cuda",
+    "gpu": "NVIDIA RTX PRO 4000 Blackwell"
+  }
+}

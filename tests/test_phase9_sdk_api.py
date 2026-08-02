@@ -13,7 +13,7 @@ import pytest
 
 from uav_crop_analysis.api import ApiApplication, LocalApiServer
 import uav_crop_analysis.bootstrap as bootstrap_module
-from uav_crop_analysis.bootstrap import build_runtime
+from uav_crop_analysis.bootstrap import build_runtime, resolve_registry_path
 from uav_crop_analysis.cli import main as cli_main
 from uav_crop_analysis.errors import ConfigurationError, MissionNotFoundError
 from uav_crop_analysis.infrastructure import AppConfig, AppPaths
@@ -40,7 +40,7 @@ def sdk(tmp_path: Path) -> Iterator[UavCropAnalysis]:
         tmp_path / "ứng dụng phase 9.db",
         config=AppConfig(paths),
         registry_path=REGISTRY,
-        nodeodm_url="",
+        nodeodm_image="opendronemap/nodeodm:latest",
     )
     value = UavCropAnalysis(runtime)
     yield value
@@ -102,10 +102,30 @@ def test_runtime_creates_artifact_free_registry_for_plain_wheel_install(
         assert runtime.registry_path == paths.config_dir / "model_inventory.json"
         assert runtime.registry_path.is_file()
         models = runtime.catalog.list_models()
-        assert len(models) == 5
+        assert len(models) == 3
+        assert models[0].model_id == "segformer-b0-v72-maizemask-weedsgalore"
+        assert models[0].status == "production_default_no_artifact"
         assert not any(model.available for model in models)
     finally:
         runtime.shutdown()
+
+
+def test_registry_prefers_launch_directory_model_pack_over_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launch_registry = tmp_path / "models/model_inventory.json"
+    launch_registry.parent.mkdir()
+    launch_registry.write_text("{}", encoding="utf-8")
+    bundle_root = tmp_path / "bundle"
+    bundled_registry = bundle_root / "models/model_inventory.json"
+    bundled_registry.parent.mkdir(parents=True)
+    bundled_registry.write_text("{}", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(bootstrap_module.sys, "_MEIPASS", bundle_root, raising=False)
+
+    assert resolve_registry_path() == launch_registry
 
 
 def test_sdk_create_list_get_and_missing_mission(sdk: UavCropAnalysis) -> None:
@@ -117,6 +137,44 @@ def test_sdk_create_list_get_and_missing_mission(sdk: UavCropAnalysis) -> None:
     assert sdk.get_mission(created.mission_id) == created
     with pytest.raises(MissionNotFoundError):
         sdk.get_mission("missing")
+
+
+@pytest.mark.parametrize("drone_count", [1, 2, 3])
+def test_sdk_creates_missions_with_one_to_three_drones(
+    sdk: UavCropAnalysis,
+    drone_count: int,
+) -> None:
+    drone_ids = tuple(f"drone-{index}" for index in range(1, drone_count + 1))
+
+    created = sdk.create_mission(
+        CreateMissionRequest(
+            mission_id=f"mission-{drone_count}",
+            name=f"Mission {drone_count}",
+            drone_ids=drone_ids,
+        )
+    )
+
+    assert tuple(item.drone_id for item in created.drones) == drone_ids
+    assert tuple(item.lane_index for item in created.drones) == tuple(
+        range(drone_count)
+    )
+
+
+@pytest.mark.parametrize("drone_ids", [[], ["d1", "d2", "d3", "d4"]])
+def test_api_rejects_mission_drone_count_outside_supported_range(
+    sdk: UavCropAnalysis,
+    drone_ids: list[str],
+) -> None:
+    response = ApiApplication(sdk).handle(
+        "POST",
+        "/api/v1/missions",
+        json.dumps(
+            {"mission_id": "invalid-count", "name": "Invalid", "drone_ids": drone_ids}
+        ).encode(),
+    )
+
+    assert response.status == 400
+    assert response.payload["error"]["code"] == "api_request_error"
 
 
 def test_api_v1_contract_and_backward_compatible_key_set(sdk: UavCropAnalysis) -> None:
@@ -177,7 +235,7 @@ def test_local_http_server_health_create_and_security_headers(
         with urlopen(f"{base}/health", timeout=3) as response:
             payload = json.load(response)
             assert response.headers["Cache-Control"] == "no-store"
-        assert payload["data"]["database_schema_version"] == 3
+            assert payload["data"]["database_schema_version"] == 4
 
         request = Request(
             f"{base}/missions",
@@ -207,10 +265,19 @@ def test_local_api_refuses_remote_bind_without_explicit_override(
         LocalApiServer(ApiApplication(sdk), host="0.0.0.0", port=0)
 
 
-def test_cli_creates_and_lists_unicode_mission(tmp_path: Path) -> None:
+@pytest.mark.parametrize("drone_count", [1, 2, 3])
+def test_cli_creates_and_lists_unicode_mission(
+    tmp_path: Path,
+    drone_count: int,
+) -> None:
     database = tmp_path / "cli dữ liệu.db"
     created_output = StringIO()
     common = ["--database", str(database), "--registry", str(REGISTRY)]
+    drone_arguments = [
+        value
+        for index in range(1, drone_count + 1)
+        for value in ("--drone", f"drone-{index:02d}")
+    ]
     status = cli_main(
         [
             *common,
@@ -219,12 +286,7 @@ def test_cli_creates_and_lists_unicode_mission(tmp_path: Path) -> None:
             "cli-mission",
             "--name",
             "Khảo sát CLI",
-            "--drone",
-            "drone-01",
-            "--drone",
-            "drone-02",
-            "--drone",
-            "drone-03",
+            *drone_arguments,
         ],
         stdout=created_output,
     )
@@ -234,3 +296,32 @@ def test_cli_creates_and_lists_unicode_mission(tmp_path: Path) -> None:
     listed_output = StringIO()
     assert cli_main([*common, "mission", "list"], stdout=listed_output) == 0
     assert json.loads(listed_output.getvalue())[0]["mission_id"] == "cli-mission"
+
+
+def test_cli_rejects_more_than_three_drones(tmp_path: Path) -> None:
+    errors = StringIO()
+    status = cli_main(
+        [
+            "--database",
+            str(tmp_path / "cli.db"),
+            "--registry",
+            str(REGISTRY),
+            "mission",
+            "create",
+            "too-many",
+            "--name",
+            "Too many",
+            "--drone",
+            "d1",
+            "--drone",
+            "d2",
+            "--drone",
+            "d3",
+            "--drone",
+            "d4",
+        ],
+        stderr=errors,
+    )
+
+    assert status == 2
+    assert "requires 1 to 3" in errors.getvalue()

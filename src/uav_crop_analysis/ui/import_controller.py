@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
-from uav_crop_analysis.adapters import load_mission_manifest
+from uav_crop_analysis.adapters import load_greeneye_bundle_media, load_mission_manifest
 from uav_crop_analysis.application import ImportMissionData, ImportReport
 
 
@@ -14,15 +14,19 @@ class _ImportWorker(QObject):
     completed = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, service: ImportMissionData, manifest_path: Path) -> None:
+    def __init__(self, service: ImportMissionData, source_path: Path) -> None:
         super().__init__()
         self._service = service
-        self._manifest_path = manifest_path
+        self._source_path = source_path
 
     @Slot()
     def run(self) -> None:
         try:
-            request = load_mission_manifest(self._manifest_path)
+            request = (
+                load_greeneye_bundle_media(self._source_path)
+                if self._source_path.is_dir()
+                else load_mission_manifest(self._source_path)
+            )
             self.completed.emit(self._service.execute(request))
         except Exception as exc:
             self.failed.emit(str(exc) or type(exc).__name__)
@@ -43,13 +47,13 @@ class MissionImportController(QObject):
     def is_busy(self) -> bool:
         return self._thread is not None
 
-    def start(self, manifest_path: str | Path) -> bool:
+    def start(self, source_path: str | Path) -> bool:
         if self.is_busy:
             return False
         thread = QThread(self)
         worker = _ImportWorker(
             self._service,
-            Path(manifest_path).expanduser().resolve(),
+            Path(source_path).expanduser().resolve(),
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)

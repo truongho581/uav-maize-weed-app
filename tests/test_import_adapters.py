@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 from PIL import Image
@@ -96,11 +97,16 @@ def test_csv_reader_reports_invalid_gps_row(tmp_path: Path) -> None:
     assert result.issues[0].row_number == 2
 
 
-def test_mission_manifest_round_trip_uses_portable_paths(tmp_path: Path) -> None:
+@pytest.mark.parametrize("drone_count", [1, 2, 3])
+def test_mission_manifest_round_trip_supports_one_to_three_drones(
+    tmp_path: Path,
+    drone_count: int,
+) -> None:
+    drone_ids = tuple(f"drone-0{index}" for index in range(1, drone_count + 1))
     mission = SurveyMission.create(
         mission_id="mission-manifest",
         name="Manifest contract",
-        drone_ids=("drone-01", "drone-02", "drone-03"),
+        drone_ids=drone_ids,
         created_at=datetime(2026, 7, 27, 9, 0, tzinfo=timezone.utc),
     )
     camera = CameraProfile(profile_id="rgb", name="RGB camera")
@@ -111,7 +117,7 @@ def test_mission_manifest_round_trip_uses_portable_paths(tmp_path: Path) -> None
             telemetry_file=tmp_path / f"drone-0{index}/flight.csv",
             camera_profile=camera,
         )
-        for index in (1, 2, 3)
+        for index in range(1, drone_count + 1)
     )
     request = MissionImportRequest(mission=mission, sources=sources)
     manifest_path = tmp_path / "mission.json"
@@ -124,6 +130,42 @@ def test_mission_manifest_round_trip_uses_portable_paths(tmp_path: Path) -> None
     text = manifest_path.read_text()
     assert '"image_dir": "drone-01/images"' in text
     assert '"lane_index": 0' in text
+
+
+@pytest.mark.parametrize("drone_count", [0, 4])
+def test_mission_manifest_rejects_drone_count_outside_supported_range(
+    tmp_path: Path,
+    drone_count: int,
+) -> None:
+    rows = [
+        {"drone_id": f"drone-{index}", "lane_index": index}
+        for index in range(drone_count)
+    ]
+    path = tmp_path / "mission.json"
+    path.write_text(
+        """
+        {
+          "schema_version": 1,
+          "mission": {
+            "mission_id": "mission-invalid-count",
+            "name": "Invalid count",
+            "created_at": "2026-07-27T09:00:00+00:00",
+            "flight_profile": {
+              "altitude_m": 10.0,
+              "gimbal_pitch_deg": -90.0,
+              "forward_overlap": 0.75,
+              "side_overlap": 0.65,
+              "capture_mode": "stop_and_capture"
+            }
+          },
+          "drones": DRONE_ROWS
+        }
+        """.replace("DRONE_ROWS", json.dumps(rows)),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ImportDataError, match="must define 1 to 3 drones"):
+        load_mission_manifest(path)
 
 
 def test_mission_manifest_rejects_unknown_schema(tmp_path: Path) -> None:

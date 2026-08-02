@@ -1,0 +1,9 @@
+path: /workspace/runpod_bundle/src_data/maize_mask_7.2.yolov8_stage_standard_spatial_guard/standard
+train: images/train
+val: images/valid
+test: images/test
+nc: 3
+names:
+  0: maize2
+  1: maize4
+  2: maize6

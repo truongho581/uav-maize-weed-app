@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 from pathlib import Path
@@ -32,7 +32,12 @@ class _ImageAnalysis:
     job_id: str
     model_id: str
     model_version: str | None
-    weed_coverage_percent: float
+    weed_coverage_percent: float | None = None
+    class_coverage_percent: dict[str, float] | None = None
+    class_pixels: dict[str, int] | None = None
+    maize_instance_count: int | None = None
+    maize_canopy_pixels: int | None = None
+    maize_canopy_pixels_by_class: dict[str, int] | None = None
 
 
 class MissionReportService:
@@ -85,6 +90,7 @@ class MissionReportService:
                         camera_by_id[image.camera_profile_id],
                         image.relative_altitude_m
                         or workspace.mission.flight_profile.altitude_m,
+                        image_width_px=image.width_px,
                     )
                     if image.camera_profile_id is not None
                     and image.camera_profile_id in camera_by_id
@@ -133,8 +139,6 @@ class MissionReportService:
             spatial_products=spatial,
             limitations=_limitations(cameras, jobs, spatial),
         )
-        if report.drone_count != 3:
-            raise ReportError("mission report requires exactly three drones")
         return report
 
     def export(self, mission_id: str, output_root: str | Path) -> ReportExport:
@@ -168,13 +172,51 @@ class MissionReportService:
             for summary in job.result.image_summaries:
                 image_id = str(summary.get("image_id", ""))
                 coverage = summary.get("weed_coverage_percent")
-                if not image_id or image_id in result or not isinstance(coverage, (int, float)):
+                maize_count = summary.get("maize_instance_count")
+                if not image_id or not isinstance(coverage, (int, float)) and not isinstance(maize_count, int):
                     continue
-                result[image_id] = _ImageAnalysis(
+                current = result.get(image_id)
+                base = current or _ImageAnalysis(
                     job_id=job.job_id,
                     model_id=job.config.model_id,
                     model_version=versions.get(job.config.model_id),
-                    weed_coverage_percent=float(coverage),
+                )
+                result[image_id] = replace(
+                    base,
+                    weed_coverage_percent=(
+                        base.weed_coverage_percent
+                        if base.weed_coverage_percent is not None
+                        else (float(coverage) if isinstance(coverage, (int, float)) else None)
+                    ),
+                    class_coverage_percent=(
+                        base.class_coverage_percent
+                        if base.class_coverage_percent is not None
+                        else ({str(key): float(value) for key, value in summary.get("class_coverage_percent", {}).items()}
+                              if isinstance(summary.get("class_coverage_percent"), dict) else None)
+                    ),
+                    class_pixels=(
+                        base.class_pixels
+                        if base.class_pixels is not None
+                        else ({str(key): int(value) for key, value in summary.get("class_pixels", {}).items()}
+                              if isinstance(summary.get("class_pixels"), dict) else None)
+                    ),
+                    maize_instance_count=(
+                        base.maize_instance_count
+                        if base.maize_instance_count is not None
+                        else (int(maize_count) if isinstance(maize_count, int) else None)
+                    ),
+                    maize_canopy_pixels=(
+                        base.maize_canopy_pixels
+                        if base.maize_canopy_pixels is not None
+                        else (int(summary["maize_canopy_pixels"])
+                              if isinstance(summary.get("maize_canopy_pixels"), int) else None)
+                    ),
+                    maize_canopy_pixels_by_class=(
+                        base.maize_canopy_pixels_by_class
+                        if base.maize_canopy_pixels_by_class is not None
+                        else ({str(key): int(value) for key, value in summary.get("maize_canopy_pixels_by_class", {}).items()}
+                              if isinstance(summary.get("maize_canopy_pixels_by_class"), dict) else None)
+                    ),
                 )
         return result
 
@@ -194,13 +236,16 @@ def _camera_report(camera: CameraProfile, altitude_m: float) -> ReportCamera:
     )
 
 
-def _estimated_gsd_cm_px(camera: CameraProfile, altitude_m: float) -> float | None:
-    if camera.horizontal_fov_deg is None or camera.image_width_px is None:
+def _estimated_gsd_cm_px(
+    camera: CameraProfile, altitude_m: float, *, image_width_px: int | None = None
+) -> float | None:
+    width = image_width_px or camera.image_width_px
+    if camera.horizontal_fov_deg is None or width is None:
         return None
     ground_width_m = 2.0 * altitude_m * math.tan(
         math.radians(camera.horizontal_fov_deg) / 2.0
     )
-    return round(ground_width_m / camera.image_width_px * 100.0, 6)
+    return round(ground_width_m / width * 100.0, 6)
 
 
 def _issues_by_image(
@@ -235,9 +280,28 @@ def _image_report(
     width = int(getattr(image, "width_px"))
     height = int(getattr(image, "height_px"))
     weed_area = None
-    if coverage is not None and gsd_cm_px is not None:
-        pixel_area_m2 = (gsd_cm_px / 100.0) ** 2
+    pixel_area_m2: float | None = (
+        (gsd_cm_px / 100.0) ** 2 if gsd_cm_px is not None else None
+    )
+    if coverage is not None and pixel_area_m2 is not None:
         weed_area = round(width * height * pixel_area_m2 * coverage / 100.0, 6)
+    class_coverage = dict(analysis.class_coverage_percent) if analysis and analysis.class_coverage_percent else {}
+    class_pixels = dict(analysis.class_pixels) if analysis and analysis.class_pixels else {}
+    if analysis and analysis.maize_canopy_pixels is not None:
+        class_coverage["maize_canopy"] = round(
+            100.0 * analysis.maize_canopy_pixels / (width * height), 6
+        )
+        class_pixels["maize_canopy"] = analysis.maize_canopy_pixels
+        class_pixels.update(analysis.maize_canopy_pixels_by_class or {})
+    class_area = (
+        {name: round(pixels * pixel_area_m2, 6) for name, pixels in class_pixels.items()}
+        if pixel_area_m2 is not None and class_pixels else None
+    )
+    maize_area = class_area.get("maize_canopy") if class_area else None
+    maize_density = (
+        round(analysis.maize_instance_count / (width * height * pixel_area_m2), 6)
+        if analysis and analysis.maize_instance_count is not None and pixel_area_m2 else None
+    )
     return ReportImageRecord(
         mission_id=mission_id,
         drone_id=str(getattr(image, "drone_id")),
@@ -258,6 +322,12 @@ def _image_report(
         model_version=analysis.model_version if analysis else None,
         weed_coverage_percent=coverage,
         estimated_weed_area_m2=weed_area,
+        maize_status=("available" if analysis and analysis.maize_instance_count is not None else "unavailable_instance_checkpoint"),
+        maize_instance_count=(analysis.maize_instance_count if analysis else None),
+        maize_density_plants_m2=maize_density,
+        maize_canopy_area_m2=maize_area,
+        class_coverage_percent=class_coverage or None,
+        class_area_m2=class_area,
     )
 
 
@@ -327,19 +397,19 @@ def _limitations(
     spatial: tuple[ReportSpatialProduct, ...],
 ) -> tuple[str, ...]:
     limitations = [
-        "Weed là semantic coverage; báo cáo không đếm instance weed.",
-        "Maize instance chưa có số liệu cho tới khi checkpoint instance được đăng ký.",
+        "Cỏ dại được tính theo diện tích phân vùng; không đếm từng cây cỏ dại.",
+        "Số cây ngô chỉ có khi trọng số mô hình đối tượng đã được đăng ký.",
     ]
     if not cameras or any(camera.estimated_gsd_cm_px is None for camera in cameras):
         limitations.append(
-            "Không thể ước tính GSD khi camera thiếu horizontal FOV hoặc chiều rộng ảnh."
+            "Không thể ước tính GSD khi máy ảnh thiếu FOV ngang hoặc chiều rộng ảnh."
         )
     else:
         limitations.append(
-            "GSD và diện tích weed là giá trị ước tính từ độ cao ảnh/nhiệm vụ và horizontal FOV."
+            "GSD và diện tích cỏ dại được ước tính từ độ cao ảnh/nhiệm vụ và FOV ngang."
         )
     if not any(item.accuracy == "georeferenced" for item in spatial):
-        limitations.append("Mission chưa có sản phẩm không gian georeferenced.")
+        limitations.append("Nhiệm vụ chưa có ảnh ghép đã định vị địa lý.")
     if not any(job.status is JobStatus.COMPLETED for job in jobs):
-        limitations.append("Mission chưa có job AI hoàn thành để tổng hợp chỉ số theo ảnh.")
+        limitations.append("Nhiệm vụ chưa có tác vụ AI hoàn thành để tổng hợp theo ảnh.")
     return tuple(limitations)

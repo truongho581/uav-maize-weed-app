@@ -26,6 +26,7 @@ from .analysis_workspace import (
     AnalysisWorkspaceService,
     ModelArtifactOption,
 )
+from .model_test import ModelTestRequest, ModelTestResult, ModelTestService
 from .data_workspace import (
     DataQualityIssue,
     DroneDataGroup,
@@ -39,6 +40,7 @@ from .workspace import (
     DroneCoverage,
     JobSummary,
     MissionDataStatus,
+    MissionWorkflowStatus,
     MissionOverview,
     MissionSummary,
     MissionWorkspaceService,
@@ -68,6 +70,7 @@ __all__ = [
     "MissionDataWorkspace",
     "MissionDataWorkspaceService",
     "MissionDataStatus",
+    "MissionWorkflowStatus",
     "MissionImportRequest",
     "MissionRepository",
     "MissionOverview",
@@ -75,6 +78,9 @@ __all__ = [
     "MissionWorkspaceService",
     "MaizeMetrics",
     "ModelArtifactOption",
+    "ModelTestRequest",
+    "ModelTestResult",
+    "ModelTestService",
     "TelemetryCsvMapping",
     "TelemetryReader",
     "TimestampFormat",

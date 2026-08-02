@@ -7,6 +7,7 @@ from typing import cast
 import numpy as np
 from PIL import Image
 from PySide6.QtCore import Qt
+import pytest
 from pytestqt.qtbot import QtBot
 
 from uav_crop_analysis.application import (
@@ -110,46 +111,59 @@ def _model(root: Path, *, semantic: bool) -> AnalysisModelOption:
     )
 
 
-def _job_config(root: Path) -> AnalysisJobConfig:
-    source = root / "source.png"
+def _job_config(root: Path, image_count: int = 1) -> AnalysisJobConfig:
+    inputs = tuple(
+        AnalysisInput(
+            f"image-{index:02d}",
+            root / ("source.png" if index == 1 else f"source-{index:02d}.png"),
+        )
+        for index in range(1, image_count + 1)
+    )
     return AnalysisJobConfig(
         mission_id="mission-phase6-ui",
         model_id="semantic-ready",
         artifact_role="best",
         registry_path=root / "registry.json",
-        inputs=(AnalysisInput("image-01", source),),
+        inputs=inputs,
         output_root=root / "results",
     )
 
 
-def _completed_job(root: Path) -> AnalysisJob:
-    source = root / "source.png"
+def _completed_job(root: Path, image_count: int = 1) -> AnalysisJob:
     artifact_dir = root / "results" / "job-completed" / "artifacts"
     artifact_dir.mkdir(parents=True)
-    original = np.zeros((3, 4, 3), dtype=np.uint8)
-    original[:, :] = (30, 120, 55)
-    Image.fromarray(original).save(source)
-    mask = np.zeros((3, 4), dtype=np.uint8)
-    mask[0, 0] = 255
-    Image.fromarray(mask).save(artifact_dir / "image-01.weed_mask.png")
-    probability = np.linspace(0, 1, 12, dtype=np.float32).reshape(3, 4)
-    np.save(artifact_dir / "image-01.weed_probability.npy", probability)
-    result = AnalysisResult(
-        artifact_dir=artifact_dir,
-        manifest_sha256="0" * 64,
-        image_summaries=(
+    summaries = []
+    for index, analysis_input in enumerate(_job_config(root, image_count).inputs, start=1):
+        original = np.zeros((3, 4, 3), dtype=np.uint8)
+        original[:, :] = (30 + index, 120, 55)
+        Image.fromarray(original).save(analysis_input.source_path)
+        mask = np.zeros((3, 4), dtype=np.uint8)
+        mask[0, 0] = 255
+        Image.fromarray(mask).save(
+            artifact_dir / f"{analysis_input.image_id}.weed_mask.png"
+        )
+        probability = np.linspace(0, 1, 12, dtype=np.float32).reshape(3, 4)
+        np.save(
+            artifact_dir / f"{analysis_input.image_id}.weed_probability.npy",
+            probability,
+        )
+        summaries.append(
             {
-                "image_id": "image-01",
-                "source_path": str(source),
+                "image_id": analysis_input.image_id,
+                "source_path": str(analysis_input.source_path),
                 "width": 4,
                 "height": 3,
                 "weed_coverage_percent": 100 / 12,
                 "tile_count": 1,
-            },
-        ),
+            }
+        )
+    result = AnalysisResult(
+        artifact_dir=artifact_dir,
+        manifest_sha256="0" * 64,
+        image_summaries=tuple(summaries),
         provenance={},
     )
-    return AnalysisJob("job-completed", _job_config(root)).start().complete(result)
+    return AnalysisJob("job-completed", _job_config(root, image_count)).start().complete(result)
 
 
 def test_data_workspace_exposes_three_drone_tabs_and_issue_filter(
@@ -169,6 +183,30 @@ def test_data_workspace_exposes_three_drone_tabs_and_issue_filter(
 
     page.drone_tabs.setCurrentIndex(1)
     assert page.image_model.rowCount() == 1
+
+
+@pytest.mark.parametrize("drone_count", [1, 2])
+def test_data_workspace_tab_count_matches_mission_assignments(
+    qtbot: QtBot,
+    drone_count: int,
+) -> None:
+    drone_ids = tuple(f"drone-{index}" for index in range(1, drone_count + 1))
+    mission = SurveyMission.create(
+        f"mission-{drone_count}",
+        f"Mission {drone_count}",
+        drone_ids,
+        created_at=NOW,
+    )
+    groups = tuple(
+        DroneDataGroup(drone_id, index, (), 0, 0)
+        for index, drone_id in enumerate(drone_ids)
+    )
+    page = DataWorkspacePage()
+    qtbot.addWidget(page)
+
+    page.set_data(MissionDataWorkspace(mission, groups, (), ()))
+
+    assert page.drone_tabs.count() == drone_count
 
 
 def test_analysis_workspace_keeps_weed_semantic_and_maize_instance_separate(
@@ -191,9 +229,48 @@ def test_analysis_workspace_keeps_weed_semantic_and_maize_instance_separate(
     assert request.model_id == "semantic-ready"
     assert request.weed_threshold == 0.5
 
+    page.threshold.setValue(0.65)
+    assert page.run_button.isEnabled()
+    with qtbot.waitSignal(page.submitRequested, timeout=1000) as rerun_signal:
+        qtbot.mouseClick(page.run_button, Qt.MouseButton.LeftButton)
+    rerun_request = rerun_signal.args[0]
+    assert isinstance(rerun_request, AnalysisRequest)
+    assert rerun_request.weed_threshold == 0.65
+    assert page.workspace_splitter.orientation() is Qt.Orientation.Horizontal
+    assert not page.settings_dialog.isVisible()
+
     page.task_tabs.setCurrentIndex(1)
     assert not page.run_button.isEnabled()
-    assert "instance" in page.model_status.text().lower()
+    assert "đối tượng" in page.model_status.text().lower()
+
+
+def test_analysis_workspace_can_submit_available_maize_instance_checkpoint(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    checkpoint = tmp_path / "instance.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    instance = AnalysisModelOption(
+        model_id="yolov8-ready",
+        version="7.2",
+        family="yolov8",
+        task=AnalysisTask.MAIZE_INSTANCE,
+        status="production_default",
+        runtime="ultralytics",
+        target_classes=("maize2", "maize4", "maize6"),
+        artifacts=(ModelArtifactOption("best", checkpoint, True),),
+    )
+    page = AnalysisWorkspacePage()
+    qtbot.addWidget(page)
+    page.set_workspace("mission-phase6-ui", (), (instance,), ())
+    page.task_tabs.setCurrentIndex(1)
+
+    assert page.run_button.isEnabled()
+    assert not page.threshold.isEnabled()
+    with qtbot.waitSignal(page.submitRequested, timeout=1000) as signal:
+        qtbot.mouseClick(page.run_button, Qt.MouseButton.LeftButton)
+    request = signal.args[0]
+    assert isinstance(request, AnalysisRequest)
+    assert request.model_id == "yolov8-ready"
 
 
 def test_analysis_job_actions_follow_selected_job_state(
@@ -209,6 +286,8 @@ def test_analysis_job_actions_follow_selected_job_state(
     )
     assert page.cancel_button.isEnabled()
     assert not page.retry_button.isEnabled()
+    assert page.delete_button.isEnabled()
+    assert page.job_model.columnCount() == 3
 
     failed = AnalysisJob("job-failed", _job_config(tmp_path)).start().fail(
         JobError("inference_failed", "failed", True, {})
@@ -248,6 +327,46 @@ def test_result_viewer_renders_original_mask_probability_and_overlay(
     entry.source_path.unlink()
     assert not render_layer(entry, LayerMode.WEED_MASK).isNull()
     assert not render_layer(entry, LayerMode.PROBABILITY).isNull()
+
+
+def test_result_viewer_moves_between_images_with_arrow_buttons(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    viewer = ResultViewer()
+    qtbot.addWidget(viewer)
+    viewer.set_job(_completed_job(tmp_path, image_count=2))
+
+    assert viewer.image_combo.currentIndex() == 0
+    assert viewer.image_position.text() == "1 / 2"
+    assert not viewer.previous_image.isEnabled()
+    assert viewer.next_image.isEnabled()
+
+    qtbot.mouseClick(viewer.next_image, Qt.MouseButton.LeftButton)
+    assert viewer.image_combo.currentIndex() == 1
+    assert viewer.image_position.text() == "2 / 2"
+    assert viewer.previous_image.isEnabled()
+    assert not viewer.next_image.isEnabled()
+
+    qtbot.mouseClick(viewer.previous_image, Qt.MouseButton.LeftButton)
+    assert viewer.image_combo.currentIndex() == 0
+
+
+def test_result_viewer_uses_distinct_legend_entries_for_maize_stages(
+    qtbot: QtBot,
+) -> None:
+    viewer = ResultViewer()
+    qtbot.addWidget(viewer)
+
+    viewer._configure_layers("maize_instance_segmentation")  # noqa: SLF001
+
+    assert viewer.legend_label.text() == "Ngô 2 lá"
+    assert viewer.swatch.objectName() == "Maize2Swatch"
+    assert viewer.crop_legend_label.text() == "Ngô 4 lá"
+    assert viewer.crop_swatch.objectName() == "Maize4Swatch"
+    assert viewer.maize6_legend_label.text() == "Ngô 6 lá"
+    assert viewer.maize6_swatch.objectName() == "Maize6Swatch"
+    assert viewer.crop_swatch.isVisibleTo(viewer)
+    assert viewer.maize6_swatch.isVisibleTo(viewer)
 
 
 def test_mission_import_controller_runs_manifest_import_off_ui_thread(

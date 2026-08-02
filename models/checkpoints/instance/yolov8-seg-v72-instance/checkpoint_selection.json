@@ -1,0 +1,10 @@
+{
+  "best_epoch": 101,
+  "valid_mask_map": 0.39304216149729054,
+  "valid_macro_per_stage_mask_ap": 0.3930421614972905,
+  "valid_mask_ap75": 0.41645313501981923,
+  "source": "Ultralytics validator metrics.seg",
+  "primary": "validation mask mAP@[0.50:0.95]",
+  "tie_break": "validation macro per-stage mask AP",
+  "tertiary_tie_break": "validation mask AP75"
+}

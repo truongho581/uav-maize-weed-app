@@ -1,0 +1,106 @@
+{
+  "schema_version": 2,
+  "task": {
+    "type": "instance_segmentation",
+    "class_names": [
+      "maize2",
+      "maize4",
+      "maize6"
+    ],
+    "ignored_categories_in_final_coco_eval": [
+      "maize-u"
+    ],
+    "excluded_categories": [
+      "weed"
+    ]
+  },
+  "model": {
+    "name": "yolov8_seg",
+    "variant": "yolov8s-seg.pt",
+    "implementation": "ultralytics.YOLO",
+    "pretrained": true,
+    "pretraining_source": "Ultralytics COCO segmentation checkpoint"
+  },
+  "data": {
+    "coco_root": "/workspace/runpod_bundle/src_data/maize_mask_7.2.coco_standard_split_spatial_guard",
+    "yolo_root": "/workspace/runpod_bundle/src_data/maize_mask_7.2.yolov8_stage_standard_spatial_guard",
+    "dataset_version": "v7.2",
+    "dataset_key": "v7.2",
+    "protocol": "fixed",
+    "fold": "fixed",
+    "img_size": 640,
+    "multipart_policy": "one YOLO polygon row per disconnected component"
+  },
+  "training": {
+    "task": "segment",
+    "data": "/workspace/results/paper_standard_split_v72/instance/instance/yolov8_seg/v7.2/fixed/fixed/seed_42/data.yaml",
+    "imgsz": 640,
+    "batch": 8,
+    "epochs": 100,
+    "project": "/workspace/results/paper_standard_split_v72/instance/instance/yolov8_seg/v7.2/fixed/fixed",
+    "name": "seed_42",
+    "device": "0",
+    "workers": 2,
+    "exist_ok": true,
+    "pretrained": true,
+    "optimizer": "AdamW",
+    "lr0": 0.001,
+    "lrf": 0.01,
+    "momentum": 0.937,
+    "weight_decay": 0.0005,
+    "warmup_epochs": 3.0,
+    "patience": 100,
+    "seed": 42,
+    "deterministic": true,
+    "amp": true,
+    "cos_lr": false,
+    "mask_ratio": 2,
+    "overlap_mask": true,
+    "close_mosaic": 10,
+    "hsv_h": 0.015,
+    "hsv_s": 0.7,
+    "hsv_v": 0.4,
+    "degrees": 0.0,
+    "translate": 0.1,
+    "scale": 0.5,
+    "shear": 0.0,
+    "perspective": 0.0,
+    "flipud": 0.0,
+    "fliplr": 0.5,
+    "mosaic": 1.0,
+    "mixup": 0.0,
+    "copy_paste": 0.0,
+    "conf": 0.001,
+    "iou": 0.7,
+    "max_det": 100,
+    "plots": true,
+    "save": true,
+    "save_period": -1,
+    "cache": false
+  },
+  "inference_for_final_eval": {
+    "score_threshold": 0.25,
+    "mask_threshold": 0.5,
+    "nms_iou": 0.7,
+    "max_detections_per_image": 100
+  },
+  "checkpoint_selection": {
+    "primary": "valid_mask_map",
+    "definition": "Ultralytics metrics.seg.map, IoU 0.50:0.05:0.95",
+    "tie_break": "valid_macro_per_stage_mask_ap",
+    "tertiary_tie_break": "valid_mask_ap75",
+    "ultralytics_default_fitness_is_primary": false,
+    "test_used_for_selection": false
+  },
+  "runtime": {
+    "python": "3.12.3",
+    "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.39",
+    "torch": "2.8.0+cu128",
+    "torchvision": "0.23.0+cu128",
+    "transformers": "5.14.1",
+    "ultralytics": "8.4.105",
+    "cuda_runtime": "12.8",
+    "device": "cuda",
+    "gpu": "NVIDIA RTX PRO 4000 Blackwell"
+  }
+}

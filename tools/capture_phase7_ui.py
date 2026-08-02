@@ -13,17 +13,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
+    parser.add_argument("--field-map-dialog", action="store_true")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("QT_OPENGL", "software")
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    os.environ.setdefault(
+        "QTWEBENGINE_CHROMIUM_FLAGS",
+        "--disable-gpu --disable-gpu-compositing",
+    )
 
     import numpy as np
     from PIL import Image
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QWidget
 
     from uav_crop_analysis.application import (
         AnalysisModelOption,
@@ -87,7 +94,7 @@ def main() -> None:
         orthomosaic_preview,
         now,
         raster,
-        provenance={"engine": "NodeODM", "task_id": "task-20260727-01"},
+        provenance={"engine": "NodeODM (Docker local)", "task_id": "task-20260727-01"},
     )
     heatmap_product = SpatialProduct(
         "heatmap-demo",
@@ -122,11 +129,25 @@ def main() -> None:
         (AnalysisInput("orthomosaic-demo", orthomosaic_path),),
         root / "results",
     )
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir(exist_ok=True)
+    Image.fromarray(weed.astype(np.uint8) * 255).save(
+        artifact_dir / "orthomosaic-demo.weed_mask.png"
+    )
     job = AnalysisJob("job-semantic-004", job_config).start().complete(
         AnalysisResult(
-            root / "artifacts",
+            artifact_dir,
             "a" * 64,
-            ({"image_id": "orthomosaic-demo", "weed_coverage_percent": 7.4},),
+            (
+                {
+                    "image_id": "orthomosaic-demo",
+                    "source_path": str(orthomosaic_path),
+                    "weed_pixels": int(weed.sum()),
+                    "weed_coverage_percent": float(weed.mean() * 100),
+                    "crop_pixels": int(field.shape[0] * field.shape[1] * 0.62),
+                    "crop_coverage_percent": 62.0,
+                },
+            ),
             {},
         )
     )
@@ -163,12 +184,23 @@ def main() -> None:
     window._set_nav(window.spatial_nav)
     window.show()
     app.processEvents()
-    QTest.qWait(100)
+    QTest.qWait(3500)
     window.spatial_workspace.fit_image()
     window.repaint()
     app.processEvents()
+    target: QWidget = window
+    if args.field_map_dialog:
+        window.spatial_workspace._open_map_dialog()
+        dialog = window.spatial_workspace._map_dialog
+        if dialog is None:
+            raise RuntimeError("field map dialog was not created")
+        dialog.resize(args.width, args.height)
+        target = dialog
+        QTest.qWait(5000)
+        target.repaint()
+        app.processEvents()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    image = window.grab().toImage()
+    image = target.grab().toImage()
     if not image.save(str(args.output)):
         raise RuntimeError(f"failed to save screenshot: {args.output}")
     print(f"{args.output} {image.width()}x{image.height()}")

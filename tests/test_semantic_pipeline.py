@@ -52,7 +52,10 @@ class ThresholdSegmenter:
             class_names=("background", "crop", "weed"),
             class_map=class_map,
             probabilities=probabilities,
-            target_masks={"weed": np.ascontiguousarray(class_map == 2)},
+            target_masks={
+                "crop": np.ascontiguousarray(class_map == 1),
+                "weed": np.ascontiguousarray(class_map == 2),
+            },
             provenance=PROVENANCE,
             latency_ms=1.0,
         )
@@ -87,12 +90,18 @@ def test_pipeline_merges_probability_and_exports_atomic_artifacts(tmp_path: Path
     )
 
     mask = np.asarray(Image.open(result.artifact_dir / "image-1.weed_mask.png")) > 0
+    crop_mask = np.asarray(Image.open(result.artifact_dir / "image-1.crop_mask.png")) > 0
     probability = np.load(result.artifact_dir / "image-1.weed_probability.npy")
+    crop_probability = np.load(result.artifact_dir / "image-1.crop_probability.npy")
     np.testing.assert_array_equal(mask, image[..., 0] > 127)
+    assert not crop_mask.any()
     np.testing.assert_allclose(probability, image[..., 0] / 255.0, atol=1e-6)
+    np.testing.assert_array_equal(crop_probability, np.zeros(image.shape[:2], dtype=np.float32))
+    assert (result.artifact_dir / "image-1.semantic_classes.png").is_file()
     assert (result.artifact_dir / "manifest.json").is_file()
     assert (result.artifact_dir / "COMPLETED.json").is_file()
     assert result.image_summaries[0]["weed_coverage_percent"] == 50.0
+    assert result.image_summaries[0]["crop_coverage_percent"] == 0.0
     assert [stage for stage, _ in events][-3:] == [
         JobStage.MERGE,
         JobStage.METRICS,

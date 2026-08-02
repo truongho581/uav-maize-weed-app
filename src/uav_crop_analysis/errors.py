@@ -78,6 +78,14 @@ class GeospatialError(UAVCropAnalysisError):
     code = "geospatial_error"
 
 
+class MissionPlanningError(UAVCropAnalysisError, ValueError):
+    code = "mission_planning_error"
+
+
+class MissionPlanNotFoundError(UAVCropAnalysisError):
+    code = "mission_plan_not_found"
+
+
 class ReportError(UAVCropAnalysisError):
     code = "report_error"
 

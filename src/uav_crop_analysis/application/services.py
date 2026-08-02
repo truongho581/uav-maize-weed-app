@@ -14,7 +14,7 @@ from uav_crop_analysis.errors import MissionAlreadyExistsError
 class CreateSurveyMissionCommand:
     mission_id: str
     name: str
-    drone_ids: tuple[str, str, str]
+    drone_ids: tuple[str, ...]
     flight_profile: FlightProfile | None = None
     created_at: datetime | None = None
 

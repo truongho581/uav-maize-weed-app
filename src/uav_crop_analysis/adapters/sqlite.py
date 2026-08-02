@@ -28,7 +28,7 @@ from uav_crop_analysis.errors import (
 )
 
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 
 MIGRATION_V1 = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -168,6 +168,22 @@ CREATE INDEX idx_spatial_products_mission
     ON spatial_products(mission_id, created_at);
 """
 
+MIGRATION_V4 = """
+CREATE TABLE camera_catalog (
+    profile_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    make TEXT,
+    model TEXT,
+    image_width_px INTEGER,
+    image_height_px INTEGER,
+    focal_length_mm REAL,
+    horizontal_fov_deg REAL,
+    vertical_fov_deg REAL,
+    distortion_coefficients_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 
 class SQLiteMissionRepository:
     def __init__(self, database_path: str | Path) -> None:
@@ -241,6 +257,26 @@ class SQLiteMissionRepository:
                     connection.executescript(script)
                 except sqlite3.Error as exc:
                     raise MigrationError("failed to apply SQLite migration v3") from exc
+            if current < 4:
+                applied_at = datetime.now().astimezone().isoformat()
+                escaped_applied_at = applied_at.replace("'", "''")
+                script = (
+                    "BEGIN IMMEDIATE;\n"
+                    + MIGRATION_V4
+                    + "\nINSERT INTO camera_catalog "
+                    "SELECT profile_id, name, make, model, image_width_px, image_height_px, "
+                    "focal_length_mm, horizontal_fov_deg, vertical_fov_deg, "
+                    "distortion_coefficients_json, '"
+                    + escaped_applied_at
+                    + "' FROM camera_profiles;\n"
+                    + "INSERT INTO schema_migrations(version, applied_at) "
+                    + f"VALUES (4, '{escaped_applied_at}');\n"
+                    + "PRAGMA user_version = 4;\nCOMMIT;"
+                )
+                try:
+                    connection.executescript(script)
+                except sqlite3.Error as exc:
+                    raise MigrationError("failed to apply SQLite migration v4") from exc
 
     def add(self, mission: SurveyMission) -> None:
         try:
@@ -328,6 +364,7 @@ class SQLiteMissionRepository:
                 self._insert_mission(connection, mission, replace=True)
                 self._insert_assignments(connection, mission)
                 self._insert_camera_profiles(connection, mission.mission_id, camera_profiles)
+                self._upsert_camera_catalog(connection, camera_profiles)
                 self._insert_telemetry(connection, telemetry_samples)
                 self._insert_images(connection, images)
         except sqlite3.Error as exc:
@@ -359,6 +396,66 @@ class SQLiteMissionRepository:
             )
             for row in rows
         )
+
+    def list_saved_camera_profiles(self) -> tuple[CameraProfile, ...]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM camera_catalog ORDER BY name, profile_id"
+            ).fetchall()
+        return tuple(self._camera_from_row(row) for row in rows)
+
+    def save_camera_profile(
+        self,
+        mission_id: MissionId,
+        profile: CameraProfile,
+        drone_ids: tuple[DroneId, ...],
+    ) -> None:
+        selected = tuple(drone.value for drone in drone_ids)
+        if not selected:
+            raise PersistenceError("camera profile must be assigned to at least one drone")
+        try:
+            with self._connection() as connection, connection:
+                known = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT drone_id FROM drone_assignments WHERE mission_id = ?",
+                        (mission_id.value,),
+                    )
+                }
+                if not set(selected) <= known:
+                    raise PersistenceError("camera profile references an unknown mission drone")
+                connection.execute(
+                    """
+                    INSERT INTO camera_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(mission_id, profile_id) DO UPDATE SET
+                        name = excluded.name, make = excluded.make, model = excluded.model,
+                        image_width_px = excluded.image_width_px,
+                        image_height_px = excluded.image_height_px,
+                        focal_length_mm = excluded.focal_length_mm,
+                        horizontal_fov_deg = excluded.horizontal_fov_deg,
+                        vertical_fov_deg = excluded.vertical_fov_deg,
+                        distortion_coefficients_json = excluded.distortion_coefficients_json
+                    """,
+                    (
+                        mission_id.value, profile.profile_id, profile.name, profile.make,
+                        profile.model, profile.image_width_px, profile.image_height_px,
+                        profile.focal_length_mm, profile.horizontal_fov_deg,
+                        profile.vertical_fov_deg, json.dumps(profile.distortion_coefficients),
+                    ),
+                )
+                self._upsert_camera_catalog(connection, (profile,))
+                placeholders = ",".join("?" for _ in selected)
+                connection.execute(
+                    f"UPDATE image_assets SET camera_profile_id = ? "
+                    f"WHERE mission_id = ? AND drone_id IN ({placeholders})",  # noqa: S608
+                    (profile.profile_id, mission_id.value, *selected),
+                )
+        except PersistenceError:
+            raise
+        except sqlite3.Error as exc:
+            raise PersistenceError(
+                "failed to save camera profile", context={"mission_id": mission_id.value}
+            ) from exc
 
     def list_image_assets(self, mission_id: MissionId) -> tuple[ImageAsset, ...]:
         with self._connection() as connection:
@@ -462,6 +559,45 @@ class SQLiteMissionRepository:
                 )
                 for item in profiles
             ),
+        )
+
+    @staticmethod
+    def _upsert_camera_catalog(
+        connection: sqlite3.Connection, profiles: tuple[CameraProfile, ...]
+    ) -> None:
+        now = datetime.now().astimezone().isoformat()
+        connection.executemany(
+            """
+            INSERT INTO camera_catalog VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(profile_id) DO UPDATE SET
+                name = excluded.name, make = excluded.make, model = excluded.model,
+                image_width_px = excluded.image_width_px, image_height_px = excluded.image_height_px,
+                focal_length_mm = excluded.focal_length_mm,
+                horizontal_fov_deg = excluded.horizontal_fov_deg,
+                vertical_fov_deg = excluded.vertical_fov_deg,
+                distortion_coefficients_json = excluded.distortion_coefficients_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                (
+                    item.profile_id, item.name, item.make, item.model,
+                    item.image_width_px, item.image_height_px, item.focal_length_mm,
+                    item.horizontal_fov_deg, item.vertical_fov_deg,
+                    json.dumps(item.distortion_coefficients), now,
+                )
+                for item in profiles
+            ),
+        )
+
+    @staticmethod
+    def _camera_from_row(row: sqlite3.Row) -> CameraProfile:
+        return CameraProfile(
+            profile_id=row["profile_id"], name=row["name"], make=row["make"],
+            model=row["model"], image_width_px=row["image_width_px"],
+            image_height_px=row["image_height_px"], focal_length_mm=row["focal_length_mm"],
+            horizontal_fov_deg=row["horizontal_fov_deg"],
+            vertical_fov_deg=row["vertical_fov_deg"],
+            distortion_coefficients=tuple(json.loads(row["distortion_coefficients_json"])),
         )
 
     @staticmethod

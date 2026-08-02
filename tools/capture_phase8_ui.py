@@ -49,6 +49,8 @@ def main() -> None:
     risk = ((x - 350) ** 2 + (y - 210) ** 2 < 88**2) | (
         (x - 680) ** 2 + (y - 340) ** 2 < 62**2
     )
+    orthomosaic_preview = root / "orthomosaic-preview.png"
+    Image.fromarray(field).save(orthomosaic_preview)
     field[risk] = (225, 183, 59)
     preview = root / "weed-heatmap-preview.png"
     Image.fromarray(field).save(preview)
@@ -69,10 +71,15 @@ def main() -> None:
             quality_status="issue" if index == 9 else "valid",
             issue_codes=("missing_gps",) if index == 9 else (),
             analysis_job_id="job-semantic-004",
-            model_id="segformer-b0-v72-loso",
-            model_version="7.2-loso",
+            model_id="segformer-b0-v72-maizemask-weedsgalore",
+            model_version="7.2-maizemask-weedsgalore-seed42",
             weed_coverage_percent=4.2 + index * 0.35,
             estimated_weed_area_m2=1.4 + index * 0.1,
+            class_coverage_percent={
+                "background": 55.0 - index * 0.35,
+                "crop": 40.8,
+                "weed": 4.2 + index * 0.35,
+            },
         )
         for index in range(18)
     )
@@ -134,6 +141,18 @@ def main() -> None:
         ),
         spatial_products=(
             ReportSpatialProduct(
+                "orthomosaic-2026-khu-a",
+                "orthomosaic",
+                "georeferenced",
+                root / "orthomosaic.tif",
+                orthomosaic_preview,
+                "EPSG:32648",
+                (0.02, 0.02),
+                (500000.0, 1199980.0, 500030.0, 1200000.0),
+                None,
+                None,
+            ),
+            ReportSpatialProduct(
                 "heatmap-2026-khu-a",
                 "weed_heatmap",
                 "georeferenced",
@@ -147,9 +166,9 @@ def main() -> None:
             ),
         ),
         limitations=(
-            "Weed là semantic coverage; báo cáo không đếm instance weed.",
-            "Maize instance chưa có số liệu cho tới khi checkpoint được đăng ký.",
-            "GSD và diện tích weed là giá trị ước tính từ độ cao và HFOV.",
+            "Cỏ dại được tính theo diện tích phân vùng; không đếm từng cây cỏ dại.",
+            "Số cây ngô chỉ có khi trọng số mô hình đối tượng đã được đăng ký.",
+            "GSD và diện tích cỏ dại được ước tính từ độ cao và FOV ngang.",
         ),
     )
 

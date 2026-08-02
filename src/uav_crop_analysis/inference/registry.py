@@ -225,8 +225,10 @@ def _validate_manifest(manifest: ModelManifest) -> None:
         manifest.class_names
     ):
         raise ModelManifestError(f"invalid target classes for {manifest.model_id}")
-    if manifest.task is ModelTask.SEMANTIC and manifest.target_classes != ("weed",):
-        raise ModelManifestError("semantic business output must be weed only")
+    if manifest.task is ModelTask.SEMANTIC and not {"crop", "weed"} <= set(
+        manifest.target_classes
+    ):
+        raise ModelManifestError("semantic business output must include crop and weed")
     if manifest.task is ModelTask.SEMANTIC and manifest.output_adapter != "semantic_logits":
         raise ModelManifestError("semantic model output adapter must be semantic_logits")
     if manifest.task is ModelTask.MAIZE_INSTANCE and "weed" in manifest.class_names:

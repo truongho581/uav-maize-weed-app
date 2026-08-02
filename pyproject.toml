@@ -10,12 +10,16 @@ readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "numpy==2.4.5",
+    "lap==0.5.13",
     "opencv-python==4.13.0.92",
     "pandas==3.0.3",
     "Pillow==12.2.0",
+    "PySide6-Addons==6.11.1",
     "PySide6-Essentials==6.11.1",
     "pyodm==1.5.13",
     "rasterio==1.4.4",
+    "shapely==2.1.2",
+    "pyproj==3.7.2",
     "torch==2.12.0",
     "torchvision==0.27.0",
     "ultralytics==8.4.51",
@@ -25,6 +29,8 @@ dependencies = [
 dev = [
     "mypy==1.20.2",
     "pip-tools==7.6.0",
+    "pyinstaller==6.20.0",
+    "pyinstaller-hooks-contrib==2026.5",
     "pytest==8.4.2",
     "pytest-cov==7.1.0",
     "pytest-qt==4.5.0",
@@ -53,12 +59,20 @@ packages = [
     "uav_crop_analysis.inference.torch_models.deeplabv3plus.backbones",
     "uav_crop_analysis.jobs",
     "uav_crop_analysis.geospatial",
+    "uav_crop_analysis.planning",
     "uav_crop_analysis.integrations",
     "uav_crop_analysis.reporting",
     "uav_crop_analysis.sdk",
     "uav_crop_analysis.api",
     "uav_crop_analysis.ui",
     "uav_crop_analysis.ui.views",
+]
+
+[tool.setuptools.package-data]
+uav_crop_analysis = [
+    "resources/icons/*.svg",
+    "resources/icons/*.txt",
+    "resources/schemas/*.json",
 ]
 
 [tool.pytest.ini_options]

@@ -13,12 +13,15 @@ from uav_crop_analysis.errors import (
     ApiRequestError,
     JobNotFoundError,
     MissionNotFoundError,
+    MissionPlanNotFoundError,
     UAVCropAnalysisError,
 )
 from uav_crop_analysis.integrations import simulate_three_drone_streams
+from uav_crop_analysis.domain import MAX_DRONE_COUNT, MIN_DRONE_COUNT
 from uav_crop_analysis.sdk import (
     API_VERSION,
     CreateMissionRequest,
+    PlanMissionRequest,
     SubmitAnalysisRequest,
     UavCropAnalysis,
     to_json_value,
@@ -47,6 +50,8 @@ class ApiApplication:
         try:
             return self._dispatch(method.upper(), raw_path, body)
         except MissionNotFoundError as exc:
+            return _error(404, exc)
+        except MissionPlanNotFoundError as exc:
             return _error(404, exc)
         except JobNotFoundError as exc:
             return _error(404, exc)
@@ -90,7 +95,7 @@ class ApiApplication:
                 return _ok(to_json_value(self.sdk.list_missions()))
             if method == "POST":
                 payload = _json_object(body)
-                drone_ids = _three_strings(payload.get("drone_ids"), "drone_ids")
+                drone_ids = _drone_id_list(payload.get("drone_ids"), "drone_ids")
                 mission_result = self.sdk.create_mission(
                     CreateMissionRequest(
                         mission_id=str(payload["mission_id"]),
@@ -107,6 +112,27 @@ class ApiApplication:
             payload = _json_object(body)
             return _ok(
                 to_json_value(self.sdk.import_manifest(str(payload["manifest_path"]))),
+                status=201,
+            )
+        if route == ("mission-plans",):
+            if method == "GET":
+                return _ok(to_json_value(self.sdk.list_mission_plans()))
+            if method == "POST":
+                planned = self.sdk.plan_mission(_plan_request(_json_object(body)))
+                return _ok(to_json_value(planned), status=201)
+        if len(route) == 2 and route[0] == "mission-plans" and method == "GET":
+            return _ok(to_json_value(self.sdk.get_mission_plan(route[1])))
+        if (
+            len(route) == 3
+            and route[0] == "mission-plans"
+            and route[2] == "export"
+            and method == "POST"
+        ):
+            payload = _json_object(body)
+            return _ok(
+                to_json_value(
+                    self.sdk.export_mission_plan(route[1], str(payload["output_root"]))
+                ),
                 status=201,
             )
         if len(route) == 2 and route[0] == "missions" and method == "GET":
@@ -193,11 +219,76 @@ def _json_object(body: bytes) -> dict[str, Any]:
     return value
 
 
-def _three_strings(value: object, field: str) -> tuple[str, str, str]:
-    if not isinstance(value, list) or len(value) != 3:
-        raise ApiRequestError(f"{field} must contain exactly three values")
-    values = tuple(str(item) for item in value)
-    return values[0], values[1], values[2]
+def _drone_id_list(value: object, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not MIN_DRONE_COUNT <= len(value) <= MAX_DRONE_COUNT:
+        raise ApiRequestError(
+            f"{field} must contain {MIN_DRONE_COUNT} to {MAX_DRONE_COUNT} values"
+        )
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ApiRequestError(f"{field} values must be non-empty strings")
+    return tuple(item.strip() for item in value)
+
+
+def _plan_request(payload: dict[str, Any]) -> PlanMissionRequest:
+    raw_homes = payload.get("homes_wgs84", [])
+    if not isinstance(raw_homes, list):
+        raise ApiRequestError("homes_wgs84 must be an array")
+    homes = tuple(
+        None if item is None else _coordinate(item, f"homes_wgs84[{index}]")
+        for index, item in enumerate(raw_homes)
+    )
+    raw_polygon = payload.get("polygon_wgs84")
+    if not isinstance(raw_polygon, list):
+        raise ApiRequestError("polygon_wgs84 must be an array")
+    polygon = tuple(
+        _coordinate(item, f"polygon_wgs84[{index}]")
+        for index, item in enumerate(raw_polygon)
+    )
+    image_size_value = payload.get("image_size_px")
+    image_size = (
+        None
+        if image_size_value is None
+        else _integer_pair(image_size_value, "image_size_px")
+    )
+    projected_value = payload.get("projected_crs")
+    return PlanMissionRequest(
+        mission_id=str(payload["mission_id"]),
+        camera_profile_id=str(payload["camera_profile_id"]),
+        polygon_wgs84=polygon,
+        homes_wgs84=homes,
+        projected_crs=None if projected_value is None else str(projected_value),
+        altitude_agl_m=_optional_float(payload.get("altitude_agl_m")),
+        gimbal_pitch_deg=float(payload.get("gimbal_pitch_deg", -90.0)),
+        forward_overlap=_optional_float(payload.get("forward_overlap")),
+        side_overlap=_optional_float(payload.get("side_overlap")),
+        flight_speed_mps=float(payload.get("flight_speed_mps", 3.0)),
+        capture_pause_seconds=float(payload.get("capture_pause_seconds", 1.0)),
+        sweep_heading_deg=_optional_float(payload.get("sweep_heading_deg")),
+        minimum_route_separation_m=float(
+            payload.get("minimum_route_separation_m", 2.0)
+        ),
+        image_size_px=image_size,
+    )
+
+
+def _coordinate(value: object, field: str) -> tuple[float, float]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise ApiRequestError(f"{field} must be [latitude, longitude]")
+    return float(value[0]), float(value[1])
+
+
+def _integer_pair(value: object, field: str) -> tuple[int, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise ApiRequestError(f"{field} must contain two integers")
+    return int(value[0]), int(value[1])
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ApiRequestError("optional numeric value must be a number or null")
+    return float(value)
 
 
 def _ok(data: Any, *, status: int = 200) -> ApiResponse:

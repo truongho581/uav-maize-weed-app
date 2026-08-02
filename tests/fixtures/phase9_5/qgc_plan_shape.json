@@ -1,0 +1,40 @@
+{
+  "fileType": "Plan",
+  "geoFence": {
+    "circles": [],
+    "polygons": [],
+    "version": 2
+  },
+  "item_commands": [
+    16,
+    206,
+    16,
+    206
+  ],
+  "item_keys": [
+    "AMSLAltAboveTerrain",
+    "Altitude",
+    "AltitudeMode",
+    "autoContinue",
+    "command",
+    "doJumpId",
+    "frame",
+    "params",
+    "type"
+  ],
+  "mission_keys": [
+    "cruiseSpeed",
+    "firmwareType",
+    "globalPlanAltitudeMode",
+    "hoverSpeed",
+    "items",
+    "plannedHomePosition",
+    "vehicleType",
+    "version"
+  ],
+  "rallyPoints": {
+    "points": [],
+    "version": 2
+  },
+  "version": 1
+}

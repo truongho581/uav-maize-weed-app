@@ -69,6 +69,20 @@ def test_restart_marks_interrupted_worker_as_retryable_failure(tmp_path: Path) -
     assert repository.list_events(queued.job_id)[-1].event_type is JobEventType.RECOVERED
 
 
+def test_queued_job_can_be_deleted_before_a_worker_starts(tmp_path: Path) -> None:
+    repository = SQLiteAnalysisJobRepository(tmp_path / "app.db")
+    queued = _job(tmp_path, "job-delete-queued")
+    repository.add(queued, queued.event(JobEventType.CREATED))
+    job_root = queued.config.output_root / queued.job_id
+    job_root.mkdir(parents=True)
+    (job_root / "stale.txt").write_text("stale", encoding="utf-8")
+
+    AnalysisJobService(repository).delete(queued.job_id)
+
+    assert repository.get(queued.job_id) is None
+    assert not job_root.exists()
+
+
 def test_schema_v1_database_migrates_to_latest_schema(tmp_path: Path) -> None:
     database = tmp_path / "legacy-v1.db"
     connection = sqlite3.connect(database)

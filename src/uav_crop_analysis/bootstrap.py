@@ -9,8 +9,11 @@ import sys
 
 from uav_crop_analysis.adapters import (
     CsvTelemetryReader,
+    GreenEyeMissionBundleExporter,
+    JsonMissionPlanRepository,
     LanePreviewMosaicBuilder,
-    NodeOdmOrthomosaicEngine,
+    DockerManagedNodeOdmEngine,
+    DockerNodeOdmRuntime,
     PillowExifReader,
     PortableMissionReportExporter,
     RasterioGeoRaster,
@@ -24,11 +27,13 @@ from uav_crop_analysis.application import (
     ImportMissionData,
     MissionDataWorkspaceService,
     MissionWorkspaceService,
+    ModelTestService,
 )
 from uav_crop_analysis.geospatial import SpatialWorkspaceService
 from uav_crop_analysis.infrastructure import AppConfig, configure_logging
 from uav_crop_analysis.inference.default_registry import ensure_default_registry
 from uav_crop_analysis.jobs import AnalysisJobService
+from uav_crop_analysis.planning import GridMissionPlanner, MissionPlanningService
 from uav_crop_analysis.reporting import MissionReportService
 
 
@@ -49,7 +54,9 @@ class ApplicationRuntime:
     analysis_workspace: AnalysisWorkspaceService
     spatial_workspace: SpatialWorkspaceService
     report_workspace: MissionReportService
+    model_test: ModelTestService
     mission_import: ImportMissionData
+    mission_planning: MissionPlanningService
 
     def shutdown(self) -> None:
         self.job_service.shutdown()
@@ -60,7 +67,8 @@ def build_runtime(
     *,
     config: AppConfig | None = None,
     registry_path: str | Path | None = None,
-    nodeodm_url: str | None = None,
+    mission_plan_path: str | Path | None = None,
+    nodeodm_image: str | None = None,
 ) -> ApplicationRuntime:
     runtime_config = config or AppConfig.from_environment()
     runtime_config.paths.ensure_exists()
@@ -84,6 +92,11 @@ def build_runtime(
         )
     catalog = RegistryModelCatalog(registry)
     products = SQLiteSpatialProductRepository(database)
+    mission_plans = JsonMissionPlanRepository(
+        mission_plan_path
+        or os.environ.get("UAV_CROP_MISSION_PLAN_DIR")
+        or runtime_config.paths.data_dir / "mission-plans"
+    )
     analysis = AnalysisWorkspaceService(
         missions,
         job_service,
@@ -91,10 +104,14 @@ def build_runtime(
         registry,
         runtime_config.paths.data_dir / "results",
     )
-    odm_url = (
-        nodeodm_url
-        if nodeodm_url is not None
-        else os.environ.get("UAV_CROP_NODEODM_URL", "").strip()
+    local_nodeodm = DockerManagedNodeOdmEngine(
+        runtime=DockerNodeOdmRuntime(
+            image=(
+                nodeodm_image
+                or os.environ.get("UAV_CROP_NODEODM_IMAGE", "").strip()
+                or "opendronemap/nodeodm:latest"
+            )
+        )
     )
     return ApplicationRuntime(
         config=runtime_config,
@@ -105,7 +122,12 @@ def build_runtime(
         spatial_products=products,
         catalog=catalog,
         job_service=job_service,
-        mission_workspace=MissionWorkspaceService(missions, jobs),
+        mission_workspace=MissionWorkspaceService(
+            missions,
+            jobs,
+            mission_plans,
+            products,
+        ),
         data_workspace=MissionDataWorkspaceService(missions),
         analysis_workspace=analysis,
         spatial_workspace=SpatialWorkspaceService(
@@ -115,7 +137,7 @@ def build_runtime(
             LanePreviewMosaicBuilder(),
             runtime_config.paths.data_dir / "spatial",
             analysis=analysis,
-            orthomosaic_engine=(NodeOdmOrthomosaicEngine(odm_url) if odm_url else None),
+            orthomosaic_engine=local_nodeodm,
         ),
         report_workspace=MissionReportService(
             missions,
@@ -124,10 +146,20 @@ def build_runtime(
             catalog,
             PortableMissionReportExporter(),
         ),
+        model_test=ModelTestService(
+            catalog,
+            registry,
+            runtime_config.paths.data_dir / "model-tests",
+        ),
         mission_import=ImportMissionData(
             missions,
             PillowExifReader(),
             CsvTelemetryReader(),
+        ),
+        mission_planning=MissionPlanningService(
+            GridMissionPlanner(),
+            mission_plans,
+            GreenEyeMissionBundleExporter(),
         ),
     )
 
@@ -137,15 +169,13 @@ def resolve_registry_path(override: str | Path | None = None) -> Path:
     candidates: list[Path] = []
     if configured:
         candidates.append(Path(configured))
+    # A model pack beside the launch directory can reference external weights;
+    # it must win over the artifact-free registry embedded in a PyInstaller bundle.
+    candidates.append(Path.cwd() / "models/model_inventory.json")
     bundle_root = getattr(sys, "_MEIPASS", None)
     if bundle_root:
         candidates.append(Path(bundle_root) / "models/model_inventory.json")
-    candidates.extend(
-        (
-            Path.cwd() / "models/model_inventory.json",
-            Path(__file__).resolve().parents[2] / "models/model_inventory.json",
-        )
-    )
+    candidates.append(Path(__file__).resolve().parents[2] / "models/model_inventory.json")
     for candidate in candidates:
         resolved = candidate.expanduser().resolve()
         if resolved.is_file():

@@ -12,8 +12,10 @@ from typing import Any, TextIO
 from uav_crop_analysis import UAVCropAnalysisError, __version__
 from uav_crop_analysis.api import ApiApplication, LocalApiServer
 from uav_crop_analysis.integrations import simulate_three_drone_streams
+from uav_crop_analysis.domain import MAX_DRONE_COUNT, MIN_DRONE_COUNT
 from uav_crop_analysis.sdk import (
     CreateMissionRequest,
+    PlanMissionRequest,
     SubmitAnalysisRequest,
     UavCropAnalysis,
     to_json_value,
@@ -34,7 +36,11 @@ def main(
         _write(output, {"application_version": __version__, "api_version": "v1"})
         return 0
     try:
-        with UavCropAnalysis.open(args.database, registry_path=args.registry) as sdk:
+        with UavCropAnalysis.open(
+            args.database,
+            registry_path=args.registry,
+            mission_plan_path=args.plan_store,
+        ) as sdk:
             return _execute(args, sdk, output)
     except (UAVCropAnalysisError, OSError, ValueError, KeyError) as exc:
         _write(
@@ -59,15 +65,18 @@ def _execute(args: argparse.Namespace, sdk: UavCropAnalysis, output: TextIO) -> 
             _write(output, sdk.get_mission(args.mission_id))
         elif args.mission_command == "create":
             drones = tuple(args.drone)
-            if len(drones) != 3:
-                raise ValueError("mission create requires exactly three --drone values")
+            if not MIN_DRONE_COUNT <= len(drones) <= MAX_DRONE_COUNT:
+                raise ValueError(
+                    f"mission create requires {MIN_DRONE_COUNT} to "
+                    f"{MAX_DRONE_COUNT} --drone values"
+                )
             _write(
                 output,
                 sdk.create_mission(
                     CreateMissionRequest(
                         mission_id=args.mission_id,
                         name=args.name,
-                        drone_ids=(drones[0], drones[1], drones[2]),
+                        drone_ids=drones,
                         altitude_m=args.altitude,
                         forward_overlap=args.forward_overlap,
                         side_overlap=args.side_overlap,
@@ -96,6 +105,15 @@ def _execute(args: argparse.Namespace, sdk: UavCropAnalysis, output: TextIO) -> 
             )
         elif args.job_command == "cancel":
             _write(output, sdk.cancel_job(args.job_id))
+    elif args.command == "plan":
+        if args.plan_command == "list":
+            _write(output, sdk.list_mission_plans())
+        elif args.plan_command == "show":
+            _write(output, sdk.get_mission_plan(args.mission_id))
+        elif args.plan_command == "create":
+            _write(output, sdk.plan_mission(_read_plan_request(args.request)))
+        elif args.plan_command == "export":
+            _write(output, sdk.export_mission_plan(args.mission_id, args.output))
     elif args.command == "report":
         _write(output, sdk.export_report(args.mission_id, args.output))
     elif args.command == "qgc-plan":
@@ -137,6 +155,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="uav-crop")
     parser.add_argument("--database", type=Path)
     parser.add_argument("--registry", type=Path)
+    parser.add_argument("--plan-store", type=Path)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("version")
     subparsers.add_parser("capabilities")
@@ -171,6 +190,18 @@ def _parser() -> argparse.ArgumentParser:
     cancel = job.add_parser("cancel")
     cancel.add_argument("job_id")
 
+    plan = subparsers.add_parser("plan").add_subparsers(
+        dest="plan_command", required=True
+    )
+    plan.add_parser("list")
+    plan_show = plan.add_parser("show")
+    plan_show.add_argument("mission_id")
+    plan_create = plan.add_parser("create")
+    plan_create.add_argument("request", type=Path)
+    plan_export = plan.add_parser("export")
+    plan_export.add_argument("mission_id")
+    plan_export.add_argument("--output", type=Path, required=True)
+
     report = subparsers.add_parser("report")
     report.add_argument("mission_id")
     report.add_argument("--output", type=Path, required=True)
@@ -191,6 +222,82 @@ def _parser() -> argparse.ArgumentParser:
 
 def _write(stream: TextIO, value: Any) -> None:
     stream.write(json.dumps(to_json_value(value), ensure_ascii=False, indent=2) + "\n")
+
+
+def _read_plan_request(source: Path) -> PlanMissionRequest:
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("plan request JSON must be an object")
+    polygon = tuple(
+        (float(item[0]), float(item[1]))
+        for item in _coordinate_array(payload.get("polygon_wgs84"), "polygon_wgs84")
+    )
+    homes_value = payload.get("homes_wgs84", [])
+    if not isinstance(homes_value, list):
+        raise ValueError("homes_wgs84 must be an array")
+    homes = tuple(
+        _optional_coordinate(item, f"homes_wgs84[{index}]")
+        for index, item in enumerate(homes_value)
+    )
+    image_value = payload.get("image_size_px")
+    image_size = (
+        None
+        if image_value is None
+        else _integer_pair(image_value, "image_size_px")
+    )
+    projected_value = payload.get("projected_crs")
+    return PlanMissionRequest(
+        mission_id=str(payload["mission_id"]),
+        camera_profile_id=str(payload["camera_profile_id"]),
+        polygon_wgs84=polygon,
+        homes_wgs84=homes,
+        projected_crs=None if projected_value is None else str(projected_value),
+        altitude_agl_m=_optional_number(payload.get("altitude_agl_m")),
+        gimbal_pitch_deg=float(payload.get("gimbal_pitch_deg", -90.0)),
+        forward_overlap=_optional_number(payload.get("forward_overlap")),
+        side_overlap=_optional_number(payload.get("side_overlap")),
+        flight_speed_mps=float(payload.get("flight_speed_mps", 3.0)),
+        capture_pause_seconds=float(payload.get("capture_pause_seconds", 1.0)),
+        sweep_heading_deg=_optional_number(payload.get("sweep_heading_deg")),
+        minimum_route_separation_m=float(
+            payload.get("minimum_route_separation_m", 2.0)
+        ),
+        image_size_px=image_size,
+    )
+
+
+def _coordinate_array(value: object, field: str) -> list[list[Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be an array")
+    return [_coordinate_pair(item, f"{field}[{index}]") for index, item in enumerate(value)]
+
+
+def _coordinate_pair(value: object, field: str) -> list[Any]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError(f"{field} must contain two values")
+    return value
+
+
+def _optional_coordinate(
+    value: object, field: str
+) -> tuple[float, float] | None:
+    if value is None:
+        return None
+    pair = _coordinate_pair(value, field)
+    return float(pair[0]), float(pair[1])
+
+
+def _integer_pair(value: object, field: str) -> tuple[int, int]:
+    pair = _coordinate_pair(value, field)
+    return int(pair[0]), int(pair[1])
+
+
+def _optional_number(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("optional numeric value must be a number or null")
+    return float(value)
 
 
 if __name__ == "__main__":

@@ -32,10 +32,18 @@ def configure_table(table: QTableView, *, row_height: int = 44) -> None:
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     table.setShowGrid(False)
     table.setSortingEnabled(False)
+    table.setMouseTracking(True)
+    table.setTextElideMode(Qt.TextElideMode.ElideRight)
+    table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setDefaultSectionSize(row_height)
-    table.horizontalHeader().setHighlightSections(False)
-    table.horizontalHeader().setStretchLastSection(True)
+    header = table.horizontalHeader()
+    header.setDefaultAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    )
+    header.setHighlightSections(False)
+    header.setStretchLastSection(True)
 
 
 def message_panel(title: str, detail: str) -> QWidget:

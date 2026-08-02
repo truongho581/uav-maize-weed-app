@@ -1,9 +1,10 @@
 """Domain model with no UI, AI-runtime, or image-library dependencies."""
 
 from .models import (
-    EXPECTED_DRONE_COUNT,
     MAX_ALTITUDE_M,
+    MAX_DRONE_COUNT,
     MIN_ALTITUDE_M,
+    MIN_DRONE_COUNT,
     CaptureMode,
     CameraProfile,
     DroneAssignment,
@@ -17,9 +18,10 @@ from .models import (
 )
 
 __all__ = [
-    "EXPECTED_DRONE_COUNT",
     "MAX_ALTITUDE_M",
+    "MAX_DRONE_COUNT",
     "MIN_ALTITUDE_M",
+    "MIN_DRONE_COUNT",
     "CaptureMode",
     "CameraProfile",
     "DroneAssignment",

@@ -1,4 +1,4 @@
-"""Core value objects for a three-drone crop survey mission."""
+"""Core value objects for crop survey missions using up to three drones."""
 
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ from pathlib import Path
 from uav_crop_analysis.errors import DomainValidationError
 
 
-EXPECTED_DRONE_COUNT = 3
+MIN_DRONE_COUNT = 1
+MAX_DRONE_COUNT = 3
 MIN_ALTITUDE_M = 10.0
 MAX_ALTITUDE_M = 20.0
 
@@ -109,10 +110,16 @@ class SurveyMission:
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _required_text(self.name, "name"))
         object.__setattr__(self, "assignments", tuple(self.assignments))
-        if len(self.assignments) != EXPECTED_DRONE_COUNT:
+        drone_count = len(self.assignments)
+        if not MIN_DRONE_COUNT <= drone_count <= MAX_DRONE_COUNT:
             raise DomainValidationError(
-                f"survey mission requires exactly {EXPECTED_DRONE_COUNT} drones",
-                context={"field": "assignments", "count": len(self.assignments)},
+                f"survey mission requires {MIN_DRONE_COUNT} to {MAX_DRONE_COUNT} drones",
+                context={
+                    "field": "assignments",
+                    "count": drone_count,
+                    "minimum": MIN_DRONE_COUNT,
+                    "maximum": MAX_DRONE_COUNT,
+                },
             )
 
         drone_ids = [assignment.drone_id.value for assignment in self.assignments]
@@ -123,9 +130,9 @@ class SurveyMission:
             )
 
         lane_indices = [assignment.lane_index for assignment in self.assignments]
-        if set(lane_indices) != set(range(EXPECTED_DRONE_COUNT)):
+        if set(lane_indices) != set(range(drone_count)):
             raise DomainValidationError(
-                f"lane indices must be 0..{EXPECTED_DRONE_COUNT - 1}",
+                f"lane indices must be 0..{drone_count - 1}",
                 context={"field": "assignments", "lane_indices": lane_indices},
             )
 
@@ -140,7 +147,7 @@ class SurveyMission:
         cls,
         mission_id: str,
         name: str,
-        drone_ids: tuple[str, str, str],
+        drone_ids: tuple[str, ...],
         *,
         flight_profile: FlightProfile | None = None,
         created_at: datetime | None = None,

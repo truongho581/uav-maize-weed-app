@@ -9,6 +9,7 @@ from .models import (
 )
 from .ports import (
     GeoRasterPort,
+    ImageReference,
     OrthomosaicEngine,
     PreviewMosaicBuilder,
     ProgressCallback,
@@ -19,6 +20,7 @@ from .service import SpatialWorkspaceService
 __all__ = [
     "GeoRasterMetadata",
     "GeoRasterPort",
+    "ImageReference",
     "OrthomosaicEngine",
     "PreviewMosaicBuilder",
     "ProgressCallback",

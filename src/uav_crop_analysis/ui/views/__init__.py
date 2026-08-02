@@ -4,6 +4,8 @@ from .analysis_workspace import AnalysisWorkspacePage
 from .data_workspace import DataWorkspacePage
 from .mission_list import MissionListPage
 from .mission_overview import MissionOverviewPage
+from .mission_planner import MissionPlannerPage
+from .model_test_workspace import ModelTestWorkspacePage
 from .spatial_workspace import SpatialWorkspacePage
 from .report_workspace import ReportWorkspacePage
 
@@ -12,6 +14,8 @@ __all__ = [
     "DataWorkspacePage",
     "MissionListPage",
     "MissionOverviewPage",
+    "MissionPlannerPage",
+    "ModelTestWorkspacePage",
     "SpatialWorkspacePage",
     "ReportWorkspacePage",
 ]

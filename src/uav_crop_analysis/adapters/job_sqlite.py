@@ -92,6 +92,22 @@ class SQLiteAnalysisJobRepository:
                 context={"job_id": job.job_id},
             ) from exc
 
+    def delete(self, job_id: str) -> None:
+        try:
+            with self._connection() as connection, connection:
+                cursor = connection.execute(
+                    "DELETE FROM analysis_jobs WHERE job_id = ?", (job_id,)
+                )
+                if cursor.rowcount != 1:
+                    raise PersistenceError(f"analysis job does not exist: {job_id}")
+        except PersistenceError:
+            raise
+        except sqlite3.Error as exc:
+            raise PersistenceError(
+                f"failed to delete analysis job: {job_id}",
+                context={"job_id": job_id},
+            ) from exc
+
     def list_by_status(self, statuses: tuple[JobStatus, ...]) -> tuple[AnalysisJob, ...]:
         if not statuses:
             return ()

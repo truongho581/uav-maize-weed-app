@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greeneye.local/schemas/greeneye-mission-plan-v1.schema.json",
+  "title": "GreenEye Mission Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "mission_id",
+    "generator_version",
+    "survey_area",
+    "profile",
+    "camera",
+    "statistics",
+    "routes",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "greeneye_mission_plan"},
+    "mission_id": {"type": "string", "minLength": 1},
+    "generator_version": {"type": "string", "minLength": 1},
+    "survey_area": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_reference_system", "projected_crs", "polygon"],
+      "properties": {
+        "coordinate_reference_system": {"const": "EPSG:4326"},
+        "projected_crs": {"type": ["string", "null"]},
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/point"}
+        }
+      }
+    },
+    "profile": {"$ref": "#/$defs/profile"},
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256", "footprint"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1},
+        "profile_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "footprint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "horizontal_fov_deg",
+            "vertical_fov_deg",
+            "ground_width_m",
+            "ground_height_m",
+            "lane_spacing_m",
+            "capture_spacing_m",
+            "gsd_x_cm_px",
+            "gsd_y_cm_px"
+          ],
+          "properties": {
+            "horizontal_fov_deg": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180},
+            "vertical_fov_deg": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180},
+            "ground_width_m": {"type": "number", "exclusiveMinimum": 0},
+            "ground_height_m": {"type": "number", "exclusiveMinimum": 0},
+            "lane_spacing_m": {"type": "number", "exclusiveMinimum": 0},
+            "capture_spacing_m": {"type": "number", "exclusiveMinimum": 0},
+            "gsd_x_cm_px": {"type": ["number", "null"]},
+            "gsd_y_cm_px": {"type": ["number", "null"]}
+          }
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "area_m2",
+        "coverage_ratio",
+        "capture_count",
+        "route_count",
+        "effective_sweep_heading_deg",
+        "export_ready"
+      ],
+      "properties": {
+        "area_m2": {"type": "number", "exclusiveMinimum": 0},
+        "coverage_ratio": {"type": "number", "minimum": 0, "maximum": 1.000001},
+        "capture_count": {"type": "integer", "minimum": 1},
+        "route_count": {"type": "integer", "minimum": 1, "maximum": 3},
+        "effective_sweep_heading_deg": {"type": "number", "minimum": 0, "exclusiveMaximum": 180},
+        "export_ready": {"type": "boolean"}
+      }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {"$ref": "#/$defs/route"}
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "drone_id"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "drone_id": {"type": ["string", "null"]}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+        "longitude": {"type": "number", "minimum": -180, "maximum": 180}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "drone_count",
+        "altitude_agl_m",
+        "gimbal_pitch_deg",
+        "forward_overlap",
+        "side_overlap",
+        "flight_speed_mps",
+        "capture_pause_seconds",
+        "sweep_heading_deg",
+        "minimum_route_separation_m",
+        "capture_mode",
+        "terrain_following"
+      ],
+      "properties": {
+        "drone_count": {"type": "integer", "minimum": 1, "maximum": 3},
+        "altitude_agl_m": {"type": "number", "minimum": 10, "maximum": 20},
+        "gimbal_pitch_deg": {"const": -90},
+        "forward_overlap": {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+        "side_overlap": {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+        "flight_speed_mps": {"type": "number", "exclusiveMinimum": 0},
+        "capture_pause_seconds": {"type": "number", "minimum": 0},
+        "sweep_heading_deg": {"type": ["number", "null"], "minimum": 0, "exclusiveMaximum": 180},
+        "minimum_route_separation_m": {"type": "number", "minimum": 0},
+        "capture_mode": {"const": "stop_and_capture"},
+        "terrain_following": {"const": false}
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "drone_id",
+        "home",
+        "lane_indices",
+        "estimated_distance_m",
+        "estimated_duration_seconds",
+        "waypoints"
+      ],
+      "properties": {
+        "drone_id": {"type": "string", "minLength": 1},
+        "home": {"oneOf": [{"$ref": "#/$defs/point"}, {"type": "null"}]},
+        "lane_indices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "integer", "minimum": 0}
+        },
+        "estimated_distance_m": {"type": "number", "minimum": 0},
+        "estimated_duration_seconds": {"type": "number", "minimum": 0},
+        "waypoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sequence",
+              "position",
+              "altitude_agl_m",
+              "hold_seconds",
+              "lane_index",
+              "action"
+            ],
+            "properties": {
+              "sequence": {"type": "integer", "minimum": 0},
+              "position": {"$ref": "#/$defs/point"},
+              "altitude_agl_m": {"type": "number", "exclusiveMinimum": 0},
+              "hold_seconds": {"type": "number", "minimum": 0},
+              "lane_index": {"type": "integer", "minimum": 0},
+              "action": {"const": "stop_and_capture"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

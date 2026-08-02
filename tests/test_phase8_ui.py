@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame
 from pytestqt.qtbot import QtBot
 
 from uav_crop_analysis.reporting import (
@@ -26,6 +27,8 @@ NOW = datetime(2026, 7, 27, 14, 0, tzinfo=timezone.utc)
 def _report(tmp_path: Path) -> MissionReport:
     preview = tmp_path / "heatmap.png"
     Image.new("RGB", (180, 100), (48, 125, 68)).save(preview)
+    orthomosaic_preview = tmp_path / "orthomosaic.png"
+    Image.new("RGB", (180, 100), (94, 112, 72)).save(orthomosaic_preview)
     images = tuple(
         ReportImageRecord(
             mission_id="mission-report-ui",
@@ -44,9 +47,10 @@ def _report(tmp_path: Path) -> MissionReport:
             issue_codes=() if index != 3 else ("missing_gps",),
             analysis_job_id="job-report-ui",
             model_id="segformer-v72",
-            model_version="7.2-loso",
+            model_version="7.2-maizemask-weedsgalore-seed42",
             weed_coverage_percent=float(5 + index),
             estimated_weed_area_m2=1.2,
+            class_coverage_percent={"background": 60.0, "crop": 33.0, "weed": 7.0},
         )
         for index in range(6)
     )
@@ -98,7 +102,7 @@ def _report(tmp_path: Path) -> MissionReport:
                 "job-report-ui",
                 "completed",
                 "segformer-v72",
-                "7.2-loso",
+                "7.2-maizemask-weedsgalore-seed42",
                 "best",
                 6,
                 0.5,
@@ -107,6 +111,18 @@ def _report(tmp_path: Path) -> MissionReport:
             ),
         ),
         spatial_products=(
+            ReportSpatialProduct(
+                "orthomosaic-ui",
+                "orthomosaic",
+                "georeferenced",
+                tmp_path / "orthomosaic.tif",
+                orthomosaic_preview,
+                "EPSG:32648",
+                (0.02, 0.02),
+                (500000.0, 1199990.0, 500010.0, 1200000.0),
+                None,
+                None,
+            ),
             ReportSpatialProduct(
                 "heatmap-ui",
                 "weed_heatmap",
@@ -140,12 +156,16 @@ def test_report_workspace_renders_dashboard_and_emits_export(
     assert page.image_value.text() == "6"
     assert page.valid_value.text() == "5"
     assert page.analyzed_value.text() == "6"
-    assert page.weed_value.text() == "7.50%"
+    assert page.crop_value.text() == "33,00%"
+    assert page.weed_value.text() == "7,50%"
     assert page.drone_model.rowCount() == 3
     assert page.image_model.rowCount() == 6
     assert page.analysis_model.rowCount() == 1
     assert "EPSG:32648" in page.spatial_value.text()
+    assert page.orthomosaic_preview.pixmap() is not None
     assert page.heatmap_preview.pixmap() is not None
+    assert page.inspector_scroll.widget().objectName() == "InspectorPanel"
+    assert not page.findChildren(QFrame, "ReportCard")
 
     with qtbot.waitSignal(page.exportRequested, timeout=1000) as signal:
         qtbot.mouseClick(page.export_button, Qt.MouseButton.LeftButton)

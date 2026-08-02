@@ -15,9 +15,9 @@ def test_model_contract_keeps_weed_out_of_instance_counting() -> None:
     assert all(model.target_classes == ("maize2", "maize4", "maize6") for model in instance)
 
 
-def test_semantic_business_target_is_weed_only() -> None:
+def test_semantic_business_targets_are_crop_and_weed() -> None:
     registry = ModelRegistry.from_file(REGISTRY)
     semantic = registry.list_models(ModelTask.SEMANTIC)
 
     assert semantic
-    assert all(model.target_classes == ("weed",) for model in semantic)
+    assert all(model.target_classes == ("crop", "weed") for model in semantic)

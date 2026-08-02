@@ -6,8 +6,11 @@ if TYPE_CHECKING:
     from .image_metadata import PillowExifReader
     from .job_sqlite import SQLiteAnalysisJobRepository
     from .memory import InMemoryMissionRepository
+    from .mission_plan_export import GreenEyeMissionBundleExporter, QGroundControlPlanWriter
+    from .mission_bundle_media import has_greeneye_bundle_media, load_greeneye_bundle_media
     from .model_catalog import RegistryModelCatalog
-    from .nodeodm import NodeOdmOrthomosaicEngine
+    from .nodeodm import DockerManagedNodeOdmEngine, DockerNodeOdmRuntime
+    from .planning_json import JsonMissionPlanRepository
     from .preview_mosaic import LanePreviewMosaicBuilder
     from .rasterio_geospatial import RasterioGeoRaster
     from .report_export import PortableMissionReportExporter
@@ -17,12 +20,17 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CsvTelemetryReader",
+    "GreenEyeMissionBundleExporter",
+    "has_greeneye_bundle_media",
     "InMemoryMissionRepository",
+    "JsonMissionPlanRepository",
     "LATEST_SCHEMA_VERSION",
     "MANIFEST_SCHEMA_VERSION",
     "LanePreviewMosaicBuilder",
-    "NodeOdmOrthomosaicEngine",
+    "DockerManagedNodeOdmEngine",
+    "DockerNodeOdmRuntime",
     "PillowExifReader",
+    "QGroundControlPlanWriter",
     "RegistryModelCatalog",
     "RasterioGeoRaster",
     "PortableMissionReportExporter",
@@ -30,11 +38,32 @@ __all__ = [
     "SQLiteMissionRepository",
     "SQLiteSpatialProductRepository",
     "load_mission_manifest",
+    "load_greeneye_bundle_media",
     "write_mission_manifest",
 ]
 
 
 def __getattr__(name: str) -> Any:
+    if name in {"GreenEyeMissionBundleExporter", "QGroundControlPlanWriter"}:
+        from .mission_plan_export import (
+            GreenEyeMissionBundleExporter,
+            QGroundControlPlanWriter,
+        )
+
+        return {
+            "GreenEyeMissionBundleExporter": GreenEyeMissionBundleExporter,
+            "QGroundControlPlanWriter": QGroundControlPlanWriter,
+        }[name]
+    if name in {"has_greeneye_bundle_media", "load_greeneye_bundle_media"}:
+        from .mission_bundle_media import (
+            has_greeneye_bundle_media,
+            load_greeneye_bundle_media,
+        )
+
+        return {
+            "has_greeneye_bundle_media": has_greeneye_bundle_media,
+            "load_greeneye_bundle_media": load_greeneye_bundle_media,
+        }[name]
     if name == "CsvTelemetryReader":
         from .telemetry_csv import CsvTelemetryReader
 
@@ -55,14 +84,21 @@ def __getattr__(name: str) -> Any:
         from .preview_mosaic import LanePreviewMosaicBuilder
 
         return LanePreviewMosaicBuilder
-    if name == "NodeOdmOrthomosaicEngine":
-        from .nodeodm import NodeOdmOrthomosaicEngine
+    if name in {"DockerManagedNodeOdmEngine", "DockerNodeOdmRuntime"}:
+        from .nodeodm import DockerManagedNodeOdmEngine, DockerNodeOdmRuntime
 
-        return NodeOdmOrthomosaicEngine
+        return {
+            "DockerManagedNodeOdmEngine": DockerManagedNodeOdmEngine,
+            "DockerNodeOdmRuntime": DockerNodeOdmRuntime,
+        }[name]
     if name == "PillowExifReader":
         from .image_metadata import PillowExifReader
 
         return PillowExifReader
+    if name == "JsonMissionPlanRepository":
+        from .planning_json import JsonMissionPlanRepository
+
+        return JsonMissionPlanRepository
     if name == "RegistryModelCatalog":
         from .model_catalog import RegistryModelCatalog
 

@@ -24,6 +24,9 @@ Các nhóm phương thức ổn định:
 - Result: `list_results`, `build_report`, `export_report`.
 - Integration: `inspect_qgc_plan`, `read_qgc_log`, `capabilities`.
 
+Mission chấp nhận từ một đến ba `drone_ids` duy nhất. Lane được gán liên tục theo thứ
+tự đầu vào từ `0` đến `n-1`; 0 hoặc hơn 3 drone bị từ chối.
+
 ```python
 from uav_crop_analysis.sdk import CreateMissionRequest, UavCropAnalysis
 
@@ -42,7 +45,7 @@ with UavCropAnalysis.open("app.db") as sdk:
 ```text
 uav-crop version
 uav-crop capabilities
-uav-crop mission create ID --name NAME --drone D1 --drone D2 --drone D3
+uav-crop mission create ID --name NAME --drone D1 [--drone D2] [--drone D3]
 uav-crop mission import mission.json
 uav-crop mission list
 uav-crop job submit MISSION_ID --model MODEL_ID --artifact best
@@ -62,7 +65,7 @@ CLI ghi JSON UTF-8 ra stdout; lỗi ghi JSON ra stderr và trả exit code `2`.
 | GET | `/api/v1/health` | Health và database schema |
 | GET | `/api/v1/version` | App/SDK/API version |
 | GET | `/api/v1/capabilities` | Tính năng và safety state |
-| GET, POST | `/api/v1/missions` | Danh sách/tạo mission ba drone |
+| GET, POST | `/api/v1/missions` | Danh sách/tạo mission 1-3 drone |
 | POST | `/api/v1/missions/import` | Import `mission.json` |
 | GET | `/api/v1/missions/{id}` | Mission read model |
 | GET, POST | `/api/v1/missions/{id}/jobs` | Danh sách/tạo analysis job |

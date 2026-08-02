@@ -12,7 +12,7 @@ thể dùng cùng read model.
 
 ## Nguồn dữ liệu
 
-- Mission, ba lane, camera, ảnh và telemetry lấy từ `MissionDataRepository`.
+- Mission, 1-3 lane, camera, ảnh và telemetry lấy từ `MissionDataRepository`.
 - Job, model ID, threshold và summary lấy từ `AnalysisJobRepository`.
 - Model version lấy từ model registry; không suy ra từ tên checkpoint.
 - Orthomosaic/heatmap, CRS và source job lấy từ `SpatialProductRepository`.

@@ -5,9 +5,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Protocol
 
 from uav_crop_analysis.application.ports import MissionDataRepository
-from uav_crop_analysis.domain import MissionId, SurveyMission
+from uav_crop_analysis.application.services import (
+    CreateSurveyMission,
+    CreateSurveyMissionCommand,
+)
+from uav_crop_analysis.domain import (
+    CameraProfile,
+    DroneId,
+    FlightProfile,
+    MissionId,
+    SurveyMission,
+)
+from uav_crop_analysis.geospatial import SpatialProductKind
 from uav_crop_analysis.jobs.models import AnalysisJob, JobStatus
 from uav_crop_analysis.jobs.repository import AnalysisJobRepository
 
@@ -16,6 +28,23 @@ class MissionDataStatus(str, Enum):
     EMPTY = "empty"
     INCOMPLETE = "incomplete"
     READY = "ready"
+
+
+class MissionWorkflowStatus(str, Enum):
+    CREATED = "created"
+    PLANNED_NO_MEDIA = "planned_no_media"
+    MEDIA_NO_PLAN = "media_no_plan"
+    PLANNED_WITH_MEDIA = "planned_with_media"
+    ANALYZED_NO_HEATMAP = "analyzed_no_heatmap"
+    COMPLETE = "complete"
+
+
+class MissionPlanLookup(Protocol):
+    def get(self, mission_id: str) -> object | None: ...
+
+
+class SpatialProductLookup(Protocol):
+    def list_for_mission(self, mission_id: str) -> tuple[object, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +84,8 @@ class MissionSummary:
     gps_coverage: float
     data_status: MissionDataStatus
     latest_job_status: JobStatus | None
+    drone_count: int = 0
+    workflow_status: MissionWorkflowStatus = MissionWorkflowStatus.CREATED
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,12 +111,44 @@ class MissionWorkspaceService:
         self,
         missions: MissionDataRepository,
         jobs: AnalysisJobRepository,
+        plans: MissionPlanLookup | None = None,
+        spatial_products: SpatialProductLookup | None = None,
         *,
         recent_job_limit: int = 5,
     ) -> None:
         self._missions = missions
         self._jobs = jobs
+        self._plans = plans
+        self._spatial_products = spatial_products
         self._recent_job_limit = recent_job_limit
+
+    def create_mission(
+        self,
+        *,
+        mission_id: str,
+        name: str,
+        drone_ids: tuple[str, ...],
+        flight_profile: FlightProfile,
+        camera_profile: CameraProfile | None = None,
+    ) -> SurveyMission:
+        mission = CreateSurveyMission(self._missions).execute(
+            CreateSurveyMissionCommand(
+                mission_id=mission_id,
+                name=name,
+                drone_ids=drone_ids,
+                flight_profile=flight_profile,
+            )
+        )
+        if camera_profile is not None:
+            self._missions.save_camera_profile(
+                mission.mission_id,
+                camera_profile,
+                tuple(DroneId(value) for value in drone_ids),
+            )
+        return mission
+
+    def list_saved_camera_profiles(self) -> tuple[CameraProfile, ...]:
+        return self._missions.list_saved_camera_profiles()
 
     def list_missions(self) -> tuple[MissionSummary, ...]:
         return tuple(self._summary(mission) for mission in self._missions.list_missions())
@@ -179,6 +242,33 @@ class MissionWorkspaceService:
             gps_coverage=_coverage(gps_count, len(images)),
             data_status=_data_status(drones),
             latest_job_status=jobs[0].status if jobs else None,
+            drone_count=len(mission.assignments),
+            workflow_status=_workflow_status(
+                has_plan=self._has_plan(mission.mission_id.value),
+                image_count=len(images),
+                jobs=jobs,
+                has_heatmap=self._has_heatmap(mission.mission_id.value),
+            ),
+        )
+
+    def _has_plan(self, mission_id: str) -> bool:
+        if self._plans is None:
+            return False
+        try:
+            return self._plans.get(mission_id) is not None
+        except Exception:
+            return False
+
+    def _has_heatmap(self, mission_id: str) -> bool:
+        if self._spatial_products is None:
+            return False
+        try:
+            products = self._spatial_products.list_for_mission(mission_id)
+        except Exception:
+            return False
+        return any(
+            getattr(product, "kind", None) is SpatialProductKind.WEED_HEATMAP
+            for product in products
         )
 
 
@@ -210,3 +300,23 @@ def _job_summary(job: AnalysisJob) -> JobSummary:
         updated_at=job.updated_at,
         error_message=job.error.message if job.error else None,
     )
+
+
+def _workflow_status(
+    *,
+    has_plan: bool,
+    image_count: int,
+    jobs: tuple[AnalysisJob, ...],
+    has_heatmap: bool,
+) -> MissionWorkflowStatus:
+    if has_heatmap:
+        return MissionWorkflowStatus.COMPLETE
+    if any(job.status is JobStatus.COMPLETED for job in jobs):
+        return MissionWorkflowStatus.ANALYZED_NO_HEATMAP
+    if image_count > 0 and has_plan:
+        return MissionWorkflowStatus.PLANNED_WITH_MEDIA
+    if image_count > 0:
+        return MissionWorkflowStatus.MEDIA_NO_PLAN
+    if has_plan:
+        return MissionWorkflowStatus.PLANNED_NO_MEDIA
+    return MissionWorkflowStatus.CREATED
