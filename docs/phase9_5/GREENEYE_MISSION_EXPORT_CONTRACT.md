@@ -15,10 +15,6 @@ arm, upload, cất cánh hay bắt đầu nhiệm vụ trên drone.
 GreenEye mission/
   <mission-id>/
   mission.json
-  routes/
-    drone-01.plan.json
-    drone-02.plan.json
-    drone-03.plan.json
   qgroundcontrol/
     drone-01.plan
     drone-02.plan
@@ -34,15 +30,12 @@ GreenEye mission/
 - Số file route bằng đúng số drone của mission, từ 1 đến 3.
 - `mission.json` dùng schema version 1 và chứa polygon, profile bay, fingerprint camera,
   footprint/GSD, route, waypoint, cảnh báo và thống kê coverage.
-- `routes/*.plan.json` là contract GreenEye theo từng drone để phần mềm điều khiển tổ hợp
-  đọc route, lane, điểm chụp và thống kê mà không cần tự tách `mission.json`. Không nạp file
-  này trực tiếp vào QGroundControl.
 - `qgroundcontrol/*.plan` dùng QGC Plan version 1 và Mission version 2; đây là file dùng để
   mở, kiểm tra và nạp vào QGroundControl cho từng drone.
 - Sau chuyến bay, chép ảnh của từng drone vào `media/<drone-id>/`; có thể đặt
   `telemetry.csv` hoặc `flight-log.csv` cùng thư mục. Ứng dụng ghi nhớ thư viện đã xuất và tự
   nhận media hợp lệ khi được mở lại.
-- `checksums.sha256` dùng SHA-256 và chỉ ghi đường dẫn POSIX tương đối.
+- `checksums.sha256` dùng SHA-256 cho `mission.json` và các file `.plan`, chỉ ghi đường dẫn POSIX tương đối.
 - Không file nào trong bundle ghi đường dẫn tuyệt đối của máy tạo bundle.
 
 JSON Schema được đóng cùng package tại

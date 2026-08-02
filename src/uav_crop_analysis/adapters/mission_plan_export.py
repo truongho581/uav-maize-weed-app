@@ -13,10 +13,7 @@ from uuid import uuid4
 from uav_crop_analysis.domain import CameraProfile, FlightProfile
 from uav_crop_analysis.errors import MissionPlanningError
 from uav_crop_analysis.planning import DroneRoute, MissionPlanExport, PlannedMission
-from uav_crop_analysis.planning.serialization import (
-    plan_to_dict,
-    route_contract_to_dict,
-)
+from uav_crop_analysis.planning.serialization import plan_to_dict
 
 
 MAV_CMD_NAV_WAYPOINT = 16
@@ -117,28 +114,22 @@ class GreenEyeMissionBundleExporter:
         )
         final = mission_root / name
         staging = mission_root / f".{name}.{uuid4().hex}.tmp"
-        routes_dir = staging / "routes"
         qgc_dir = staging / "qgroundcontrol"
         media_dir = staging / "media"
-        routes_dir.mkdir(parents=True)
         qgc_dir.mkdir(parents=True)
         media_dir.mkdir(parents=True)
         try:
             _copy_existing_media(final, media_dir)
             mission_json = staging / "mission.json"
             _write_json(mission_json, plan_to_dict(plan))
-            route_jsons: list[Path] = []
             qgc_plans: list[Path] = []
             for index, route in enumerate(plan.routes, start=1):
                 stem = f"drone-{index:02d}"
                 drone_media = media_dir / route.drone_id
                 drone_media.mkdir(exist_ok=True)
                 (drone_media / ".keep").touch()
-                route_json = routes_dir / f"{stem}.plan.json"
                 qgc_plan = qgc_dir / f"{stem}.plan"
-                _write_json(route_json, route_contract_to_dict(plan, route))
                 self._qgc_writer.write(plan, route, qgc_plan)
-                route_jsons.append(route_json)
                 qgc_plans.append(qgc_plan)
 
             (media_dir / "README.txt").write_text(
@@ -149,7 +140,7 @@ class GreenEyeMissionBundleExporter:
                 encoding="utf-8",
             )
 
-            exported_files = [mission_json, *route_jsons, *qgc_plans]
+            exported_files = [mission_json, *qgc_plans]
             checksums = tuple(
                 (
                     path.relative_to(staging).as_posix(),
@@ -175,7 +166,6 @@ class GreenEyeMissionBundleExporter:
         return MissionPlanExport(
             directory=final,
             mission_json=final / mission_json.relative_to(staging),
-            route_jsons=tuple(final / path.relative_to(staging) for path in route_jsons),
             qgroundcontrol_plans=tuple(
                 final / path.relative_to(staging) for path in qgc_plans
             ),
@@ -212,15 +202,13 @@ class GreenEyeMissionBundleInitializer:
 
         staging = mission_root / f".{folder_name}.{uuid4().hex}.tmp"
         try:
-            (staging / "routes").mkdir(parents=True)
-            (staging / "qgroundcontrol").mkdir()
+            (staging / "qgroundcontrol").mkdir(parents=True)
             media = staging / "media"
             media.mkdir()
             for drone_id in drone_ids:
                 drone_media = media / drone_id
                 drone_media.mkdir()
                 (drone_media / ".keep").touch()
-            (staging / "routes" / ".keep").touch()
             (staging / "qgroundcontrol" / ".keep").touch()
             (media / "README.txt").write_text(
                 "Đặt ảnh chụp của từng drone vào media/<drone-id>/ sau khi bay.\n"

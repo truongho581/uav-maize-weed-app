@@ -25,7 +25,7 @@
           "commands": [16, 206]
         }
       ],
-      "checksum_count": 3
+      "checksum_count": 2
     },
     {
       "drone_count": 2,
@@ -63,7 +63,7 @@
           "commands": [16, 206]
         }
       ],
-      "checksum_count": 5
+      "checksum_count": 3
     },
     {
       "drone_count": 3,
@@ -113,7 +113,7 @@
           "commands": [16, 206]
         }
       ],
-      "checksum_count": 7
+      "checksum_count": 4
     }
   ],
   "safety": {

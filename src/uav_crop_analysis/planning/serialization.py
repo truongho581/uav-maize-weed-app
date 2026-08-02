@@ -21,7 +21,6 @@ from uav_crop_analysis.planning.models import (
 
 
 MISSION_PLAN_KIND = "greeneye_mission_plan"
-MISSION_ROUTE_KIND = "greeneye_drone_route"
 
 
 def plan_to_dict(plan: PlannedMission) -> dict[str, Any]:
@@ -60,19 +59,6 @@ def plan_to_dict(plan: PlannedMission) -> dict[str, Any]:
             }
             for warning in plan.warnings
         ],
-    }
-
-
-def route_contract_to_dict(plan: PlannedMission, route: DroneRoute) -> dict[str, Any]:
-    return {
-        "schema_version": MISSION_PLAN_SCHEMA_VERSION,
-        "kind": MISSION_ROUTE_KIND,
-        "mission_id": plan.mission_id,
-        "generator_version": plan.generator_version,
-        "camera_profile_id": plan.camera_profile_id,
-        "camera_profile_sha256": plan.camera_profile_sha256,
-        "profile": _profile_to_dict(plan.profile),
-        "route": _route_to_dict(route),
     }
 
 

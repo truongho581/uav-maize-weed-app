@@ -187,10 +187,6 @@ def test_bundle_checksums_paths_and_qgc_round_trip(tmp_path: Path) -> None:
         assert (media_folder / ".keep").is_file()
     assert (exported.directory / "media" / "README.txt").is_file()
     assert exported.mission_json.relative_to(exported.directory).as_posix() == "mission.json"
-    assert [path.name for path in exported.route_jsons] == [
-        "drone-01.plan.json",
-        "drone-02.plan.json",
-    ]
     assert [path.name for path in exported.qgroundcontrol_plans] == [
         "drone-01.plan",
         "drone-02.plan",
@@ -202,13 +198,12 @@ def test_bundle_checksums_paths_and_qgc_round_trip(tmp_path: Path) -> None:
         assert not Path(relative).is_absolute()
         assert ".." not in Path(relative).parts
     checksum_lines = exported.checksums_file.read_text(encoding="utf-8").splitlines()
-    assert len(checksum_lines) == 5
+    assert len(checksum_lines) == 3
 
     all_text = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (
             exported.mission_json,
-            *exported.route_jsons,
             *exported.qgroundcontrol_plans,
         )
     )
@@ -237,7 +232,6 @@ def test_creation_initializes_bundle_and_export_reuses_it(tmp_path: Path) -> Non
 
     assert created == tmp_path / "GreenEye mission" / "mission-export"
     assert (created / "mission.json").is_file()
-    assert (created / "routes" / ".keep").is_file()
     assert (created / "qgroundcontrol" / ".keep").is_file()
     assert (created / "media" / "drone-1" / ".keep").is_file()
     image = created / "media" / "drone-1" / "DJI_0001.JPG"

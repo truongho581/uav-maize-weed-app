@@ -128,10 +128,6 @@ Xuất một bundle thay vì một file mơ hồ:
 GreenEye mission/
   <mission-id>/
   mission.json
-  routes/
-    drone-01.plan.json
-    drone-02.plan.json
-    drone-03.plan.json
   qgroundcontrol/
     drone-01.plan
     drone-02.plan
@@ -141,7 +137,7 @@ GreenEye mission/
 
 `mission.json` là contract trung gian ổn định của GreenEye, chứa polygon, profile, camera
 profile ID/checksum, home, waypoint WGS84, hành động dừng-chụp và thống kê từng route.
-Các file QGC là adapter đầu ra. Số file route bằng đúng số drone đã chọn.
+Các file QGC `.plan` là đầu ra để nạp cho từng drone, với số file đúng bằng số drone đã chọn.
 
 Không ghi đường dẫn tuyệt đối của máy nguồn vào bundle. Schema có version và tất cả file dùng
 UTF-8. Writer phải được kiểm tra round-trip bằng reader hiện có.

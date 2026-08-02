@@ -236,7 +236,6 @@ class PlannedMission:
 class MissionPlanExport:
     directory: Path
     mission_json: Path
-    route_jsons: tuple[Path, ...]
     qgroundcontrol_plans: tuple[Path, ...]
     checksums_file: Path
     checksums: tuple[tuple[str, str], ...]
